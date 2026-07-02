@@ -5998,6 +5998,12 @@ a.ann-message:hover {
 .notif-item-wrap:hover .notif-actions {
   opacity: 1 !important;
 }
+.notif-item-wrap:not(.unread) .notif-item {
+  opacity: 0.55;
+}
+.notif-item-wrap:not(.unread) .notif-item:hover {
+  opacity: 0.8;
+}
 .notif-item.unread {
   background: rgba(94, 114, 228, 0.06);
 }
@@ -9011,8 +9017,8 @@ a.ann-message:hover {
   }
 }
 .sd-chapter-row-thumb {
-  width: 52px;
-  height: 72px;
+  width: 80px;
+  height: 60px;
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;

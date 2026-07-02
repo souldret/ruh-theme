@@ -4,6 +4,46 @@ Tüm önemli değişiklikler bu dosyada belgelenmiştir.
 
 ---
 
+## [v2.19.0] — 2026-07-02 (Doksan Altıncı Yayın)
+
+### 🐛 Hata Düzeltmeleri & Geliştirmeler
+
+#### 1. OG/Link Paylaşım Görseli Düzeltmesi
+- `app/series/[id]/opengraph-image.js`: Next.js 15'te `params` async olduğundan `await params` eklenerek seri linki paylaşılınca seri kapağının doğru yüklenmesi sağlandı.
+
+#### 2. Profil Fotoğrafı/Kapak Kırpma
+- `app/profile/page.js`: Görsel yüklendiğinde artık otomatik kırpma uygulanmıyor. Kırpma aracı açılmadan veya değişiklik yapılmadan kaydedilirse orijinal dosya sunucuya gönderiliyor.
+
+#### 3. Günlük Giriş Ödülü Türkçe Hata Mesajı
+- `app/api/users/daily-login/route.js`: "Already claimed today! Come back tomorrow" İngilizce mesajı Türkçeye çevrildi: "Bugünkü ödülü zaten aldınız! Yarın tekrar gelin (X saat kaldı)."
+
+#### 4. Admin Paneli — Seri Listesi Toplu İşlemler
+- `app/admin-panel/page.js`: Seri listesine checkbox eklenди — birden çok seri seçilip toplu silinebilir veya toplu kapak görseli ayarlanabilir.
+- `app/api/admin/route.js`: `bulk-delete-series` action eklendi — seçili serileri tüm dosyalarıyla birlikte siler.
+
+#### 5. Başkasının Profili — Tam Görünüm
+- `app/user/[username]/page.js`: Profil sayfası yeniden yazıldı. Kütüphane (okuma listesi), Favoriler ve Yorumlar tab'ları eklendi. Kapak görseli ve biyografi de gösterilmektedir.
+- `app/api/users/[username]/route.js`: API genişletildi — favoriler, okuma listesi, yorumlar ve profil kapak/biyografi döndürüyor.
+
+#### 6. Manga Okuma Modunda Yorum Bölümü
+- `app/reader.css`: `.manga-mode-container` üzerindeki `overflow: hidden` kaldırılarak `overflow-x: hidden` yapıldı; yorum bölümü artık küçülmüyor.
+
+#### 7. Puanlama Sistemi: 5 Yıldız = 5 Puan
+- `components/SeriesDetailClient.js`: Yıldız gösterimi ve kullanıcı etkileşimi 1-5 skalasına geçirildi (önceden 1-10 idi, `v*2` ile gösteriliyordu).
+- `app/api/series/rate/route.js`: API 1-5 puan aralığını kabul edecek şekilde güncellendi.
+
+#### 8. Bildirimler — Okundu Butonu
+- `components/Navbar.js`: Bildirim zili açıldığında artık otomatik "hepsini okundu" işaretlenmiyor. Her bildirimde kalıcı "Okundu İşaretle" butonu eklendi.
+- `app/globals.css`: Okunmuş bildirimler soluk (opacity 0.55) görünüyor, silinene kadar listede kalıyor.
+
+#### 9. Seri Detay — Bölüm Görselleri Genişletildi
+- `app/globals.css`: `.sd-chapter-row-thumb` boyutu `52×72px` → `80×60px` olarak büyütüldü.
+
+#### 10. Seri Detay — Arka Plan Blur Ayarı
+- `components/SeriesDetailClient.js`: Blur ve overlay değerleri portal'a inline style olarak geçirildi — CSS değişkeni `document.body`'de miras alınmadığından ayar değişikliği artık anında yansıyor.
+
+---
+
 ## [v2.18.0] — 2026-06-21 (Doksan Beşinci Yayın)
 
 ### 🎨 Tasarım İyileştirmeleri — Profil Sayfası Günlük Görevler Yeniden Tasarımı

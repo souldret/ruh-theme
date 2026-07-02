@@ -45,7 +45,7 @@ export async function POST(request) {
             tomorrow.setHours(0, 0, 0, 0);
             const hoursLeft = Math.ceil((tomorrow.getTime() - Date.now()) / (1000 * 60 * 60));
             return NextResponse.json({
-                error: `Already claimed today! Come back tomorrow (${hoursLeft}h left).`,
+                error: `Bugünkü ödülü zaten aldınız! Yarın tekrar gelin (${hoursLeft} saat kaldı).`,
                 alreadyClaimed: true,
                 nextClaim: tomorrow.toISOString(),
             }, { status: 400 });

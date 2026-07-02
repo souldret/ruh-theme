@@ -83,7 +83,7 @@ export async function POST(request) {
         const db = getDb();
         let requiredPerm = 'admin';
         if (['add-series', 'update-series'].includes(action)) requiredPerm = 'manage_series';
-        else if (['delete-series'].includes(action)) requiredPerm = 'delete_series';
+        else if (['delete-series', 'bulk-delete-series'].includes(action)) requiredPerm = 'delete_series';
         else if (['delete-media'].includes(action)) requiredPerm = 'manage_series';
         else if (['add-chapter', 'update-chapter', 'delete-chapter', 'delete-all-chapters', 'delete-selected-chapters', 'upload-pages', 'delete-page', 'reorder-pages'].includes(action)) requiredPerm = 'upload_chapters';
         else if (['delete-comment', 'delete-all-user-comments'].includes(action)) requiredPerm = 'manage_comments';
@@ -736,6 +736,49 @@ export async function POST(request) {
                 user.id, user.username, 'delete_series', `Deleted series ID: ${seriesId} (${seriesRow?.title || ''})`
             );
             return NextResponse.json({ message: 'Series deleted' });
+        }
+
+        if (action === 'bulk-delete-series') {
+            const db = getDb();
+            let seriesIds = [];
+            try { seriesIds = JSON.parse(formData.get('seriesIds') || '[]'); } catch { }
+            if (!Array.isArray(seriesIds) || seriesIds.length === 0) {
+                return NextResponse.json({ error: 'seriesIds gerekli' }, { status: 400 });
+            }
+            let deleted = 0;
+            for (const sid of seriesIds) {
+                const seriesRow = db.prepare('SELECT cover_url, title FROM series WHERE id = ?').get(sid);
+                if (!seriesRow) continue;
+                const chapters = db.prepare('SELECT id, thumbnail_url FROM chapters WHERE series_id = ?').all(sid);
+                for (const ch of chapters) {
+                    const pages = db.prepare('SELECT image_path FROM pages WHERE chapter_id = ?').all(ch.id);
+                    for (const p of pages) {
+                        if (isSharedChapterImage(p.image_path)) continue;
+                        try { const fp = joinPath(process.cwd(), 'public', p.image_path); if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch { }
+                    }
+                    db.prepare('DELETE FROM translations WHERE page_id IN (SELECT id FROM pages WHERE chapter_id = ?)').run(ch.id);
+                    db.prepare('DELETE FROM pages WHERE chapter_id = ?').run(ch.id);
+                    const chDir = joinPath(process.cwd(), 'public', 'uploads', 'pages', ch.id.toString());
+                    try { if (fs.existsSync(chDir)) fs.rmSync(chDir, { recursive: true, force: true }); } catch { }
+                    if (ch.thumbnail_url && ch.thumbnail_url.startsWith('/uploads/thumbnails/')) {
+                        try { const tf = joinPath(process.cwd(), 'public', ch.thumbnail_url); if (fs.existsSync(tf)) fs.unlinkSync(tf); } catch { }
+                    }
+                }
+                db.prepare('DELETE FROM comments WHERE series_id = ?').run(sid);
+                db.prepare('DELETE FROM comments WHERE chapter_id IN (SELECT id FROM chapters WHERE series_id = ?)').run(sid);
+                db.prepare('DELETE FROM favorites WHERE series_id = ?').run(sid);
+                try { db.prepare('DELETE FROM reading_lists WHERE series_id = ?').run(sid); } catch {}
+                db.prepare('DELETE FROM chapters WHERE series_id = ?').run(sid);
+                db.prepare('DELETE FROM series WHERE id = ?').run(sid);
+                if (seriesRow.cover_url && seriesRow.cover_url.startsWith('/uploads/covers/')) {
+                    try { const cf = joinPath(process.cwd(), 'public', seriesRow.cover_url); if (fs.existsSync(cf)) fs.unlinkSync(cf); } catch { }
+                }
+                deleted++;
+            }
+            db.prepare('INSERT INTO admin_logs (admin_id, admin_username, action, details) VALUES (?, ?, ?, ?)').run(
+                user.id, user.username, 'bulk_delete_series', `Deleted ${deleted} series: ${seriesIds.join(', ')}`
+            );
+            return NextResponse.json({ message: `${deleted} seri silindi` });
         }
 
         if (action === 'ban_user') {

@@ -8,7 +8,7 @@ export const contentType = 'image/png';
 export const size = { width: 1200, height: 630 };
 
 export default async function Image({ params }) {
-    const { id } = params;
+    const { id } = await params;
 
     let title = 'YomiTranslate';
     let description = 'Read manga online with AI translation.';

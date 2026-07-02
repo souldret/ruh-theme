@@ -2232,6 +2232,9 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
     }
 
     const [selectedChapters, setSelectedChapters] = useState([]);
+    const [selectedSeriesIds, setSelectedSeriesIds] = useState([]);
+    const [bulkSeriesCoverFile, setBulkSeriesCoverFile] = useState(null);
+    const [showBulkSeriesActions, setShowBulkSeriesActions] = useState(false);
 
     async function handleBulkUpload(e) {
         e.preventDefault();
@@ -2826,40 +2829,102 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                 {/* ═══════════════ SERIES MANAGEMENT ═══════════════ */}
                 {tab === 'series' && !subView && (
                     <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <h2 style={{ fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <BookIcon /> Series ({allSeries.length})
+                                <BookIcon /> Seriler ({allSeries.length})
                             </h2>
-                            <button className="btn btn-primary btn-sm" onClick={() => { resetForm(); setSubView('create'); }}>
-                                <PlusIcon /> New Series
-                            </button>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                {allSeries.length > 0 && (
+                                    <button className="btn btn-ghost btn-sm" onClick={() => {
+                                        if (selectedSeriesIds.length === allSeries.length) setSelectedSeriesIds([]);
+                                        else setSelectedSeriesIds(allSeries.map(s => s.id));
+                                    }}>
+                                        {selectedSeriesIds.length === allSeries.length ? 'Seçimi Kaldır' : 'Tümünü Seç'}
+                                    </button>
+                                )}
+                                <button className="btn btn-primary btn-sm" onClick={() => { resetForm(); setSubView('create'); }}>
+                                    <PlusIcon /> Yeni Seri
+                                </button>
+                            </div>
                         </div>
+                        {/* Toplu işlem araç çubuğu */}
+                        {selectedSeriesIds.length > 0 && (
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: 'rgba(94,114,228,0.1)', border: '1px solid rgba(94,114,228,0.3)', borderRadius: 10, marginBottom: 14 }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent)' }}>{selectedSeriesIds.length} seri seçildi</span>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
+                                        <input type="file" accept="image/*" style={{ display: 'none' }}
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                const fd = new FormData(); fd.append('cover', file);
+                                                fd.append('seriesIds', JSON.stringify(selectedSeriesIds));
+                                                try {
+                                                    show('Kapak görselleri güncelleniyor...', 'info');
+                                                    for (const sid of selectedSeriesIds) {
+                                                        const f2 = new FormData(); f2.append('cover', file); f2.append('seriesId', sid);
+                                                        await authFetch(`/api/admin?action=update-cover`, { method: 'POST', body: f2 });
+                                                    }
+                                                    show('Kapak görselleri güncellendi!', 'success');
+                                                    loadStats();
+                                                } catch { show('Bir hata oluştu', 'error'); }
+                                                e.target.value = '';
+                                            }}
+                                        />
+                                        <span className="btn btn-ghost btn-sm"><ImageIcon /> Toplu Kapak Ayarla</span>
+                                    </label>
+                                    <button className="btn btn-danger btn-sm" onClick={() => setConfirmModal({
+                                        action: 'bulk-delete-series',
+                                        body: { seriesIds: JSON.stringify(selectedSeriesIds) },
+                                        text: `Seçili ${selectedSeriesIds.length} seriyi silmek istediğinize emin misiniz? BU İŞLEM GERİ ALINAMAZ!`,
+                                        onDone: async () => { setSelectedSeriesIds([]); loadStats(); }
+                                    })}>
+                                        <TrashIcon /> Seçilenleri Sil ({selectedSeriesIds.length})
+                                    </button>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => setSelectedSeriesIds([])}>İptal</button>
+                                </div>
+                            </div>
+                        )}
                         {allSeries.length === 0 ? (
                             <div className="admin-card" style={{ textAlign: 'center', padding: '40px 20px' }}>
-                                <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>No series yet. Create your first manga series!</p>
+                                <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>Henüz seri yok. İlk seriyi oluşturun!</p>
                                 <button className="btn btn-primary" onClick={() => { resetForm(); setSubView('create'); }}>
-                                    <PlusIcon /> Create First Series
+                                    <PlusIcon /> İlk Seriyi Oluştur
                                 </button>
                             </div>
                         ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                                 {allSeries.map(s => (
-                                    <div key={s.id} className="admin-card" style={{ cursor: 'pointer', transition: 'transform 0.15s' }}
-                                        onClick={() => openSeriesDetail(s.id)}
+                                    <div key={s.id} className="admin-card"
+                                        style={{ cursor: 'pointer', transition: 'transform 0.15s', outline: selectedSeriesIds.includes(s.id) ? '2px solid var(--accent)' : 'none' }}
+                                        onClick={(e) => {
+                                            if (e.target.type === 'checkbox') return;
+                                            if (selectedSeriesIds.length > 0) {
+                                                setSelectedSeriesIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]);
+                                            } else {
+                                                openSeriesDetail(s.id);
+                                            }
+                                        }}
                                         onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                                         onMouseOut={e => e.currentTarget.style.transform = 'none'}>
                                         <div style={{ display: 'flex', gap: 12 }}>
-                                            <div style={{ width: 60, height: 85, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: 'var(--bg-tertiary)' }}>
-                                                <img src={s.cover_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='85'%3E%3Crect width='60' height='85' fill='%231a1a2e'/%3E%3Ctext x='30' y='45' text-anchor='middle' fill='%23555' font-size='22'%3E📖%3C/text%3E%3C/svg%3E"} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            <div style={{ position: 'relative', width: 60, height: 85, flexShrink: 0 }}>
+                                                <div style={{ width: 60, height: 85, borderRadius: 6, overflow: 'hidden', background: 'var(--bg-tertiary)' }}>
+                                                    <img src={s.cover_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='85'%3E%3Crect width='60' height='85' fill='%231a1a2e'/%3E%3Ctext x='30' y='45' text-anchor='middle' fill='%23555' font-size='22'%3E📖%3C/text%3E%3C/svg%3E"} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                </div>
+                                                <input type="checkbox" checked={selectedSeriesIds.includes(s.id)}
+                                                    onChange={(e) => { e.stopPropagation(); setSelectedSeriesIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id)); }}
+                                                    style={{ position: 'absolute', top: 4, left: 4, width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+                                                />
                                             </div>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</h3>
                                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                                                    <span className={`admin-badge ${s.published ? 'admin-role' : 'user-role'}`}>{s.published ? 'Published' : 'Draft'}</span>
+                                                    <span className={`admin-badge ${s.published ? 'admin-role' : 'user-role'}`}>{s.published ? 'Yayında' : 'Taslak'}</span>
                                                     <span className="admin-badge user-role">{s.status}</span>
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                    {s.chapter_count || 0} chapters · {(s.views || 0).toLocaleString()} views · ★ {s.rating?.toFixed(1)}
+                                                    {s.chapter_count || 0} bölüm · {(s.views || 0).toLocaleString()} görüntülenme · ★ {s.rating?.toFixed(1)}
                                                 </div>
                                             </div>
                                         </div>

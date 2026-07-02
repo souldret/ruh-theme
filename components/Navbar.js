@@ -347,7 +347,7 @@ export default function Navbar({ siteSettings = {} }) {
                         {/* Notification Bell – only when logged in */}
                         {!loading && user && (
                             <div className="notif-bell-wrapper" ref={notifRef}>
-                                <button className="nav-icon-btn" onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen && unreadCount > 0) markAllRead(); }} aria-label="Notifications">
+                                <button className="nav-icon-btn" onClick={() => { setNotifOpen(!notifOpen); }} aria-label="Notifications">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
                                     {unreadCount > 0 && <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
                                 </button>
@@ -381,7 +381,7 @@ export default function Navbar({ siteSettings = {} }) {
                                             <div className="notif-empty">Henüz bildiriminiz yok</div>
                                         ) : (
                                             notifications.slice(0, 15).map(n => (
-                                                <div key={n.id} style={{ position: 'relative', display: 'flex' }} className={`notif-item-wrap ${!n.is_read ? 'unread' : ''}`}>
+                                                <div key={n.id} style={{ display: 'flex', alignItems: 'center' }} className={`notif-item-wrap ${!n.is_read ? 'unread' : ''}`}>
                                                     <a href={n.link || '#'} className={`notif-item`} onClick={() => setNotifOpen(false)} style={{ flex: 1 }}>
                                                         <div className="notif-icon">
                                                             {n.type === 'reply' ? (
@@ -405,7 +405,7 @@ export default function Navbar({ siteSettings = {} }) {
                                                             <span className="notif-time">{timeAgo(n.created_at)}</span>
                                                         </div>
                                                     </a>
-                                                    <div className="notif-actions" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 4, background: 'var(--surface-color)', paddingLeft: 4, opacity: 0, transition: 'opacity 0.2s' }}>
+                                                    <div className="notif-actions" style={{ display: 'flex', gap: 4, alignItems: 'center', paddingLeft: 4, flexShrink: 0 }}>
                                                         {!n.is_read && (
                                                             <button onClick={(e) => markAsRead(e, n.id)} title="Okundu İşaretle" style={{ background: 'none', border: 'none', color: 'var(--success)', cursor: 'pointer', padding: 4 }}>
                                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>

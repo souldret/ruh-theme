@@ -490,21 +490,16 @@ const { settings: siteSettings } = useSettings() || {};
         if (!pendingAvatar || !avatarPreview) return;
         setUploadingImage(true);
         try {
-            // Canvas tabanlı kırpma: önizleme viewport 200×200, çıktı 200×200
-            const croppedBlob = await getCroppedBlob(avatarPreview, avatarCropData, 200, 200, 200, 200);
             const formData = new FormData();
-            formData.append('avatar', croppedBlob, 'avatar.webp');
-            // Canvas tabanlı kırpma yapıldığını ve crop parametrelerini gönder
-            formData.append('cropX', avatarCropData.x.toString());
-            formData.append('cropY', avatarCropData.y.toString());
-            formData.append('cropScale', avatarCropData.scale.toString());
-            formData.append('cropApplied', 'true');
-            // Canvas viewport boyutları
-            formData.append('viewportWidth', '200');
-            formData.append('viewportHeight', '200');
-            // Çıktı boyutları
-            formData.append('outputWidth', '200');
-            formData.append('outputHeight', '200');
+            // Kırpma modu aktifse canvas kırpma uygula; aksi hâlde orijinal dosyayı gönder
+            if (showAvatarCrop && (avatarCropData.x !== 0 || avatarCropData.y !== 0 || avatarCropData.scale !== 1)) {
+                const croppedBlob = await getCroppedBlob(avatarPreview, avatarCropData, 200, 200, 200, 200);
+                formData.append('avatar', croppedBlob, 'avatar.webp');
+                formData.append('cropApplied', 'true');
+            } else {
+                formData.append('avatar', pendingAvatar, pendingAvatar.name || 'avatar.webp');
+                formData.append('cropApplied', 'false');
+            }
 
             const res = await authFetch('/api/auth/profile/avatar', {
                 method: 'POST',
@@ -527,23 +522,18 @@ const { settings: siteSettings } = useSettings() || {};
         if (!pendingCover || !coverPreview) return;
         setUploadingImage(true);
         try {
-            // Canvas tabanlı kırpma: kapak container genişliği dinamik, yükseklik 180
-            const vpW = coverCropRef.current?.offsetWidth || 800;
-            const vpH = 180;
-            const croppedBlob = await getCroppedBlob(coverPreview, coverCropData, vpW, vpH, 1200, 400);
             const formData = new FormData();
-            formData.append('cover', croppedBlob, 'cover.webp');
-            // Canvas tabanlı kırpma yapıldığını ve crop parametrelerini gönder
-            formData.append('cropX', coverCropData.x.toString());
-            formData.append('cropY', coverCropData.y.toString());
-            formData.append('cropScale', coverCropData.scale.toString());
-            formData.append('cropApplied', 'true');
-            // Canvas viewport boyutları
-            formData.append('viewportWidth', vpW.toString());
-            formData.append('viewportHeight', vpH.toString());
-            // Çıktı boyutları
-            formData.append('outputWidth', '1200');
-            formData.append('outputHeight', '400');
+            // Kırpma modu aktifse canvas kırpma uygula; aksi hâlde orijinal dosyayı gönder
+            if (showCoverCrop && (coverCropData.x !== 0 || coverCropData.y !== 0 || coverCropData.scale !== 1)) {
+                const vpW = coverCropRef.current?.offsetWidth || 800;
+                const vpH = 180;
+                const croppedBlob = await getCroppedBlob(coverPreview, coverCropData, vpW, vpH, 1200, 400);
+                formData.append('cover', croppedBlob, 'cover.webp');
+                formData.append('cropApplied', 'true');
+            } else {
+                formData.append('cover', pendingCover, pendingCover.name || 'cover.webp');
+                formData.append('cropApplied', 'false');
+            }
 
             const res = await authFetch('/api/auth/profile/cover', {
                 method: 'POST',

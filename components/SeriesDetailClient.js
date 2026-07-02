@@ -594,10 +594,13 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                     <div className="sd-fullpage-bg-layer">
                         <div
                             className="sd-fullpage-bg-layer-inner"
-                            style={{ backgroundImage: `url(${series.cover_url})` }}
+                            style={{
+                                backgroundImage: `url(${series.cover_url})`,
+                                filter: `blur(${fullpageBgBlur}px)`,
+                            }}
                         />
                     </div>
-                    <div className="sd-fullpage-bg-overlay" />
+                    <div className="sd-fullpage-bg-overlay" style={{ background: `rgba(0,0,0,${fullpageBgOverlay})` }} />
                 </>,
                 document.body
             )}
@@ -703,7 +706,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                                 <div className="neo-rating-info">
                                     <div className="neo-stars-display">
                                         {[1,2,3,4,5].map(v => (
-                                            <svg key={v} viewBox="0 0 24 24" fill={v <= Math.round((avgRating || series.rating || 0) / 2) ? "currentColor" : "rgba(255,255,255,0.1)"} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                            <svg key={v} viewBox="0 0 24 24" fill={v <= Math.round(avgRating || series.rating || 0) ? "currentColor" : "rgba(255,255,255,0.1)"} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                                         ))}
                                     </div>
                                     <div className="neo-votes-text">{ratingVoteCount} İnceleme</div>
@@ -741,13 +744,13 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                             {/* 3. The Interactive Rating Component — 5 yıldız (1-5 skala) */}
                             <div className="neo-interactive-rating" onMouseLeave={() => setHoverRating(null)}>
                                 <div className="neo-ir-title">
-                                    {user ? (userRating ? `Puanın: ${Math.ceil(userRating / 2)}/5` : (appSettings.lang_rate_series || 'Puanla')) : (appSettings.lang_rate_series || 'Giriş Yap')}
+                                    {user ? (userRating ? `Puanın: ${userRating}/5` : (appSettings.lang_rate_series || 'Puanla')) : (appSettings.lang_rate_series || 'Giriş Yap')}
                                 </div>
                                 <div className="neo-ir-stars">
                                     {[1,2,3,4,5].map(v => {
-                                        // v = 1-5 yıldız; DB'de 1-10 olarak saklanır (v*2)
-                                        const ratingVal = v * 2;
-                                        const activeThreshold = hoverRating !== null ? hoverRating : (userRating ? Math.ceil(userRating / 2) : 0);
+                                        // v = 1-5 yıldız; DB'de 1-5 olarak saklanır
+                                        const ratingVal = v;
+                                        const activeThreshold = hoverRating !== null ? hoverRating : (userRating || 0);
                                         const isActive = v <= activeThreshold;
                                         return (
                                             <button
