@@ -116,10 +116,10 @@ export default function SeriesCard({ series, priority = false }) {
                         </svg>
                         <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>Giriş Yapın</span>
                     </div>
-                </div>
-                {/* Info block below image */}
-                <div className="sc2-body">
-                    <div className="sc2-title" style={{ filter: 'blur(5px)', userSelect: 'none' }}>{series.title}</div>
+                    {/* Info overlay — görselin altında */}
+                    <div className="sc2-body">
+                        <div className="sc2-title" style={{ filter: 'blur(5px)', userSelect: 'none' }}>{series.title}</div>
+                    </div>
                 </div>
                 {showGuestAlert && (
                     <div className="adult-guest-alert" onClick={e => e.stopPropagation()}>
@@ -146,7 +146,8 @@ export default function SeriesCard({ series, priority = false }) {
                     sizes="(max-width: 480px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 200px"
                     className="sc2-img"
                 />
-                {/* Top badges */}
+
+                {/* Sol üst: tür rozeti */}
                 <div className="sc2-badges-top">
                     {typeLabel && (
                         <span style={{ ...badgeBase, background: typeStyle.bg, border: `1px solid ${typeStyle.border}`, color: '#fff' }}>
@@ -158,7 +159,7 @@ export default function SeriesCard({ series, priority = false }) {
                     )}
                 </div>
 
-                {/* Status badge top-right */}
+                {/* Sağ üst: durum rozeti */}
                 {statusKey && (
                     <div className="sc2-badge-status">
                         <span style={{ ...badgeBase, background: statusStyle.bg, border: `1px solid ${statusStyle.border}`, color: '#fff' }}>
@@ -166,32 +167,32 @@ export default function SeriesCard({ series, priority = false }) {
                         </span>
                     </div>
                 )}
-            </div>
 
-            {/* Info block BELOW the image */}
-            <div className="sc2-body">
-                {rating !== null && (
-                    <div className="sc2-rating">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="#fbbf24">
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                        </svg>
-                        {rating.toFixed(1)}
-                    </div>
-                )}
-                <div className="sc2-title">{series.title}</div>
-                <div className="sc2-meta">
-                    {chapterCount !== null && (
-                        <span className="sc2-chapters">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                {/* Alt overlay: degrade + başlık + meta */}
+                <div className="sc2-body">
+                    {rating !== null && (
+                        <div className="sc2-rating">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="#fbbf24">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                             </svg>
-                            {chapterCount > 0 ? `${chapterCount} Bölüm` : 'Bölüm Yok'}
-                        </span>
+                            {rating.toFixed(1)}
+                        </div>
                     )}
-                    {genres.length > 0 && (
-                        <span className="sc2-genre-pill">{GENRE_TR[genres[0]] || genres[0]}</span>
-                    )}
+                    <div className="sc2-title">{series.title}</div>
+                    <div className="sc2-meta">
+                        {chapterCount !== null && (
+                            <span className="sc2-chapters">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                                </svg>
+                                {chapterCount > 0 ? `Bölüm ${chapterCount}` : 'Bölüm Yok'}
+                            </span>
+                        )}
+                        {genres.length > 0 && (
+                            <span className="sc2-genre-pill">{GENRE_TR[genres[0]] || genres[0]}</span>
+                        )}
+                    </div>
                 </div>
             </div>
         </Link>
