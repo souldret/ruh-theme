@@ -1,7 +1,25 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSettingsCache, setSettingsCache, SETTINGS_CACHE_TTL } from '@/lib/settings-cache';
 
 export const dynamic = 'force-dynamic';
+
+// updates_per_page için settings cache'ini paylaş — her request'te DB sorgusu yapma
+function getUpdatesPerPage(db) {
+    const now = Date.now();
+    const { cache, cacheAt } = getSettingsCache();
+    const cacheValid = cache && now - cacheAt < SETTINGS_CACHE_TTL;
+    if (cacheValid && cache._updates_per_page !== undefined) {
+        return cache._updates_per_page;
+    }
+    const setting = db.prepare(`SELECT setting_value FROM app_settings WHERE setting_key = 'updates_per_page'`).get();
+    const value = setting ? (parseInt(setting.setting_value) || 16) : 16;
+    // Yalnızca geçerli bir cache varsa piggyback yap — boşken yazmak getSiteSettings()'i bozar
+    if (cacheValid) {
+        setSettingsCache({ ...cache, _updates_per_page: value });
+    }
+    return value;
+}
 
 export async function GET(request) {
     try {
@@ -11,11 +29,10 @@ export async function GET(request) {
         // adult: '1' = yetişkin içerik göster, '0' veya yoksa normal içerik
         const showAdult = searchParams.get('adult') === '1';
 
-        // per_page: önce query param, yoksa admin ayarı, yoksa varsayılan 16
+        // per_page: önce query param, yoksa admin ayarı (cache'li), yoksa varsayılan 16
         let perPage = parseInt(searchParams.get('limit')) || 0;
         if (!perPage) {
-            const setting = db.prepare(`SELECT setting_value FROM app_settings WHERE setting_key = 'updates_per_page'`).get();
-            perPage = setting ? (parseInt(setting.setting_value) || 16) : 16;
+            perPage = getUpdatesPerPage(db);
         }
         const offset = (page - 1) * perPage;
 

@@ -65,9 +65,10 @@ export default async function SeriesDetailPage({ params }) {
     // ─── Yorum sayılarını çek ────────────────────────────────────────────────
     let commentCountMap = {};
     try {
+        // Performans: tüm tabloyu taramak yerine yalnızca bu serinin bölümlerine filtrele
         const commentCounts = db.prepare(
-            "SELECT chapter_id, COUNT(*) as comment_count FROM comments WHERE chapter_id IS NOT NULL GROUP BY chapter_id"
-        ).all();
+            "SELECT c.chapter_id, COUNT(*) as comment_count FROM comments c JOIN chapters ch ON ch.id = c.chapter_id WHERE c.chapter_id IS NOT NULL AND ch.series_id = ? GROUP BY c.chapter_id"
+        ).all(series.id);
         for (const row of commentCounts) {
             commentCountMap[row.chapter_id] = row.comment_count;
         }

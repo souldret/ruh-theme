@@ -1,4 +1,4 @@
-﻿import './globals.css';
+import './globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 import { SettingsProvider } from '@/components/SettingsProvider';
 import Navbar from '@/components/Navbar';
@@ -483,8 +483,12 @@ function isStaffFromCookie(cookieStore) {
   }
 }
 
-function isMaintenanceModeOn() {
+function isMaintenanceModeOn(settings) {
   try {
+    // settings nesnesi varsa önce onu kullan (DB'den cache'lenmiş veri — ekstra sorgu yok)
+    if (settings && typeof settings === 'object' && 'maintenance_mode' in settings) {
+      return settings.maintenance_mode === '1';
+    }
     const db = getDb();
     const row = db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'maintenance_mode'").get();
     return row?.setting_value === '1';
@@ -493,8 +497,12 @@ function isMaintenanceModeOn() {
   }
 }
 
-function getMaintenanceMessage() {
+function getMaintenanceMessage(settings) {
   try {
+    // settings nesnesi varsa önce onu kullan (DB'den cache'lenmiş veri — ekstra sorgu yok)
+    if (settings && typeof settings === 'object' && 'maintenance_message' in settings) {
+      return settings.maintenance_message || '';
+    }
     const db = getDb();
     const row = db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'maintenance_message'").get();
     return row?.setting_value || '';
@@ -588,6 +596,8 @@ function getSiteSettings() {
       og_image_url: s.og_image_url || '',
       navbar_menu: navbarMenu,
       footer_menu: footerMenu,
+      maintenance_mode: s.maintenance_mode || '0',
+      maintenance_message: s.maintenance_message || '',
       maintenance_mode_design: s.maintenance_mode_design || 'default',
       latest_updates_title_color: s.latest_updates_title_color || '',
       latest_updates_card_bg: s.latest_updates_card_bg || '',
@@ -880,9 +890,10 @@ export default async function RootLayout({ children }) {
   const pathname = headerStore.get('x-pathname') || '/';
   // cacheVersion en üste taşındı — bakım modu early return'lerde erken kullanılıyor
   const cacheVersion = SERVER_START_VER;
-  const maintenance = isMaintenanceModeOn();
   const isAdmin = isStaffFromCookie(cookieStore);
   const siteSettings = getSiteSettings();
+  // getSiteSettings() zaten cache'lenmiş veriyi döndürür — ekstra DB sorgusu yok
+  const maintenance = isMaintenanceModeOn(siteSettings);
 
   // API routes bypass tamamen — layout bile çalışmaz
   const isApiRoute = pathname.startsWith('/api/');
@@ -926,7 +937,7 @@ export default async function RootLayout({ children }) {
     }
     // /login ve /maintenance dışındaki sayfalarda maintenance sayfasını göster
     if (!pathname.startsWith('/maintenance')) {
-      const msg = getMaintenanceMessage();
+      const msg = getMaintenanceMessage(siteSettings);
       const logoUrl = siteSettings.logo_url ? `${siteSettings.logo_url}${siteSettings.logo_url.includes('?') ? '&' : '?'}v=maintenance` : null;
       return <MaintenancePage message={msg} siteName={siteSettings.site_name} contactEmail={siteSettings.contact_email} discordUrl={siteSettings.discord_url || null} logoUrl={logoUrl} design={siteSettings.maintenance_mode_design || 'default'} />;
     }

@@ -80,9 +80,10 @@ export default function Navbar({ siteSettings = {} }) {
     async function handleAuthLogin(e) {
         e.preventDefault();
         setAuthError('');
-        // Check turnstile if configured
+        // Check turnstile if configured (skip if disabled via env)
         const turnstileSiteKey = settings?.turnstile_site_key;
-        if (turnstileSiteKey && !authTurnstileToken) {
+        const turnstileDisabled = process.env.NEXT_PUBLIC_DISABLE_TURNSTILE === '1';
+        if (turnstileSiteKey && !authTurnstileToken && !turnstileDisabled) {
             setAuthError('Lütfen insan doğrulamasını tamamlayın.');
             return;
         }
@@ -104,9 +105,10 @@ export default function Navbar({ siteSettings = {} }) {
         setAuthError('');
         if (authPassword !== authConfirmPassword) { setAuthError('Şifre eşleşmiyor'); return; }
         if (authPassword.length < 6) { setAuthError('Şifre en az 6 karakter olmalıdır'); return; }
-        // Check turnstile if configured
+        // Check turnstile if configured (skip if disabled via env)
         const turnstileSiteKey = settings?.turnstile_site_key;
-        if (turnstileSiteKey && !authTurnstileToken) {
+        const turnstileDisabled = process.env.NEXT_PUBLIC_DISABLE_TURNSTILE === '1';
+        if (turnstileSiteKey && !authTurnstileToken && !turnstileDisabled) {
             setAuthError('Lütfen insan doğrulamasını tamamlayın.');
             return;
         }
@@ -656,14 +658,14 @@ export default function Navbar({ siteSettings = {} }) {
                                     <input type="password" className="form-input" placeholder="••••••••"
                                         value={authPassword} onChange={e => setAuthPassword(e.target.value)} required autoComplete="off" />
                                 </div>
-                                {settings?.turnstile_site_key && (
+                                {settings?.turnstile_site_key && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1' && (
                                     <TurnstileWidget
                                         siteKey={settings.turnstile_site_key}
                                         onVerify={(token) => setAuthTurnstileToken(token || '')}
                                         onError={() => setAuthError('Doğrulama hatası. Lütfen sayfayı yenileyin.')}
                                     />
                                 )}
-                                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={isFormSubmitting || (settings?.turnstile_site_key && !authTurnstileToken)}>
+                                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={isFormSubmitting || (settings?.turnstile_site_key && !authTurnstileToken && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1')}>
                                     {isFormSubmitting ? 'Giriş yapılıyor...' : 'Giriş Yap'}
                                 </button>
                                 <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 16 }}>
@@ -700,14 +702,14 @@ export default function Navbar({ siteSettings = {} }) {
                                     <input type="password" className="form-input" placeholder="••••••••"
                                         value={authConfirmPassword} onChange={e => setAuthConfirmPassword(e.target.value)} required autoComplete="new-password" />
                                 </div>
-                                {settings?.turnstile_site_key && (
+                                {settings?.turnstile_site_key && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1' && (
                                     <TurnstileWidget
                                         siteKey={settings.turnstile_site_key}
                                         onVerify={(token) => setAuthTurnstileToken(token || '')}
                                         onError={() => setAuthError('Doğrulama hatası. Lütfen sayfayı yenileyin.')}
                                     />
                                 )}
-                                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={isFormSubmitting || (settings?.turnstile_site_key && !authTurnstileToken)}>
+                                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={isFormSubmitting || (settings?.turnstile_site_key && !authTurnstileToken && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1')}>
                                     {isFormSubmitting ? 'Hesap oluşturuluyor...' : 'Hesap Oluştur'}
                                 </button>
                                 <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 16 }}>
