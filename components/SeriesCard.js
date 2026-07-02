@@ -7,11 +7,33 @@ import Image from 'next/image';
 const DEFAULT_COVER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='450' viewBox='0 0 300 450'%3E%3Crect width='300' height='450' fill='%231a1a2e'/%3E%3Crect x='1' y='1' width='298' height='448' fill='none' stroke='%23333' stroke-width='1'/%3E%3Cpath d='M100 160 L100 290 L150 260 L200 290 L200 160 Z' fill='none' stroke='%23444' stroke-width='2'/%3E%3Ccircle cx='150' cy='140' r='20' fill='none' stroke='%23444' stroke-width='2'/%3E%3Ctext x='150' y='330' text-anchor='middle' fill='%23555' font-family='sans-serif' font-size='13'%3EKapak Yok%3C/text%3E%3C/svg%3E";
 
 const STATUS_TR = {
-    'ongoing': 'Devam Ediyor',
+    'ongoing': 'Devam',
     'completed': 'Tamamlandı',
     'hiatus': 'Ara Verildi',
-    'cancelled': 'İptal Edildi',
+    'cancelled': 'İptal',
     'current': 'Güncel'
+};
+
+const TYPE_LABEL = {
+    'manga': 'Manga',
+    'manhwa': 'Manhwa',
+    'manhua': 'Manhua',
+    'comic': 'Çizgi Roman',
+};
+
+const TYPE_COLOR = {
+    'manga':   { bg: 'rgba(99,102,241,0.85)',  border: 'rgba(129,140,248,0.5)' },
+    'manhwa':  { bg: 'rgba(16,185,129,0.85)',  border: 'rgba(52,211,153,0.5)' },
+    'manhua':  { bg: 'rgba(245,158,11,0.85)',  border: 'rgba(252,211,77,0.5)' },
+    'comic':   { bg: 'rgba(239,68,68,0.85)',   border: 'rgba(248,113,113,0.5)' },
+};
+
+const STATUS_COLOR = {
+    'ongoing':   { bg: 'rgba(22,163,74,0.85)',   border: 'rgba(74,222,128,0.4)' },
+    'completed': { bg: 'rgba(99,102,241,0.85)',  border: 'rgba(129,140,248,0.4)' },
+    'hiatus':    { bg: 'rgba(217,119,6,0.85)',   border: 'rgba(252,211,77,0.4)' },
+    'cancelled': { bg: 'rgba(220,38,38,0.85)',   border: 'rgba(248,113,113,0.4)' },
+    'current':   { bg: 'rgba(8,145,178,0.85)',   border: 'rgba(34,211,238,0.4)' },
 };
 
 const GENRE_TR = {
@@ -37,66 +59,69 @@ export default function SeriesCard({ series, priority = false }) {
     })();
 
     const isAdult = !!series.is_adult;
-
-    // Modern rating badge color based on score
-    const rating = series.rating != null ? series.rating : 0;
-    const ratingColor = rating >= 4 ? '#4ade80' : rating >= 3 ? '#fbbf24' : rating >= 2 ? '#fb923c' : '#f87171';
-    const ratingBg = rating >= 4 ? 'rgba(34,197,94,0.15)' : rating >= 3 ? 'rgba(251,191,36,0.15)' : rating >= 2 ? 'rgba(251,146,60,0.15)' : 'rgba(248,113,113,0.15)';
-    const ratingBorder = rating >= 4 ? 'rgba(34,197,94,0.3)' : rating >= 3 ? 'rgba(251,191,36,0.3)' : rating >= 2 ? 'rgba(251,146,60,0.3)' : 'rgba(248,113,113,0.3)';
-    // Guest visitors cannot see adult series content
     const isBlurred = isAdult && !user;
+    const chapterCount = series.chapterCount ?? series.chapter_count ?? null;
+    const typeKey = (series.type || '').toLowerCase();
+    const typeLabel = TYPE_LABEL[typeKey];
+    const typeStyle = TYPE_COLOR[typeKey] || { bg: 'rgba(80,80,100,0.85)', border: 'rgba(150,150,180,0.4)' };
+    const statusKey = series.status || '';
+    const statusStyle = STATUS_COLOR[statusKey] || { bg: 'rgba(80,80,100,0.85)', border: 'rgba(150,150,180,0.4)' };
+
+    const rating = series.rating != null ? series.rating : null;
+
+    const badgeBase = {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '3px 8px',
+        borderRadius: 6,
+        fontSize: '0.65rem',
+        fontWeight: 800,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        lineHeight: 1,
+        whiteSpace: 'nowrap',
+    };
 
     if (isBlurred) {
         return (
-            <div className="series-card adult-card-guest" style={{ cursor: 'pointer', position: 'relative' }}
-                onClick={() => setShowGuestAlert(v => !v)}>
-                <div className="series-card-image" style={{ position: 'relative' }}>
+            <div
+                className="sc2-card"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setShowGuestAlert(v => !v)}
+            >
+                <div className="sc2-img-wrap">
                     <Image
                         src={series.cover_url || DEFAULT_COVER}
                         alt="18+ İçerik"
                         fill
-                        loading={priority ? 'eager' : 'lazy'}
-                        priority={priority}
-                        sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                        loading="lazy"
+                        sizes="(max-width: 480px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 200px"
                         style={{ filter: 'blur(14px)', transform: 'scale(1.05)' }}
                     />
-                    {/* 18+ badge */}
+                    <div className="sc2-gradient" />
+                    {/* badges */}
+                    <div className="sc2-badges-top">
+                        <span style={{ ...badgeBase, background: 'rgba(239,68,68,0.85)', border: '1px solid rgba(248,113,113,0.5)', color: '#fff' }}>18+</span>
+                    </div>
+                    {/* lock overlay */}
                     <div style={{
-                        position: 'absolute', top: 8, left: 8,
-                        background: '#ef4444', color: '#fff', fontWeight: 800,
-                        fontSize: '0.7rem', padding: '3px 7px', borderRadius: 4,
-                        letterSpacing: '0.05em', zIndex: 2
-                    }}>18+</div>
-                    {/* Login prompt overlay */}
-                    <div className="adult-guest-overlay">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center', gap: 8, zIndex: 4,
+                    }}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
-                        <span>Giriş Yapın</span>
+                        <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>Giriş Yapın</span>
                     </div>
-                    <div className="series-card-overlay">
-                        <span className={`status-badge status-${series.status}`}>
-                            {STATUS_TR[series.status] || series.status}
-                        </span>
-                    </div>
-                </div>
-                <div className="series-card-body">
-                    <div className="series-card-title" style={{ filter: 'blur(5px)', userSelect: 'none' }}>
-                        {series.title}
-                    </div>
-                    <div className="series-card-meta">
-                        <span>★ —</span>
-                        <span>— bölüm</span>
-                    </div>
-                    <div className="series-card-genres">
-                        <span className="genre-tag" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '2px 8px', fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              Yetişkin
-            </span>
+                    {/* bottom info */}
+                    <div className="sc2-info">
+                        <div className="sc2-title" style={{ filter: 'blur(5px)', userSelect: 'none' }}>{series.title}</div>
                     </div>
                 </div>
-                {/* Guest alert tooltip */}
                 {showGuestAlert && (
                     <div className="adult-guest-alert" onClick={e => e.stopPropagation()}>
                         <p>Bu içerik yalnızca kayıtlı üyelere özeldir.</p>
@@ -110,87 +135,68 @@ export default function SeriesCard({ series, priority = false }) {
         );
     }
 
-    const chapterCount = series.chapterCount ?? series.chapter_count ?? null;
-
     return (
-        <Link href={`/seri/${series.slug || series.id}`} className="series-card glass-panel glass-panel-hoverable">
-            <div className="series-card-image">
+        <Link href={`/seri/${series.slug || series.id}`} className="sc2-card">
+            <div className="sc2-img-wrap">
                 <Image
                     src={series.cover_url || DEFAULT_COVER}
                     alt={series.title}
                     fill
                     loading={priority ? 'eager' : 'lazy'}
                     priority={priority}
-                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                    sizes="(max-width: 480px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 200px"
+                    className="sc2-img"
                 />
-                {isAdult && (
-                    <div style={{
-                        position: 'absolute', top: 8, left: 8,
-                        background: '#ef4444', color: '#fff', fontWeight: 800,
-                        fontSize: '0.7rem', padding: '3px 7px', borderRadius: 4,
-                        letterSpacing: '0.05em', zIndex: 3,
-                    }}>18+</div>
-                )}
-                <div className="series-card-overlay">
-                    <span className={`status-badge status-${series.status}`}>
-                        {series.status === 'ongoing' ? (
-                            <>
-                                <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6" /></svg>
-                                {STATUS_TR[series.status] || 'Devam Ediyor'}
-                            </>
-                        ) : series.status === 'completed' ? (
-                            <>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
-                                {STATUS_TR[series.status] || 'Tamamlandı'}
-                            </>
-                        ) : series.status === 'hiatus' ? (
-                            <>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-                                {STATUS_TR[series.status] || 'Ara Verildi'}
-                            </>
-                        ) : series.status === 'cancelled' ? (
-                            <>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                {STATUS_TR[series.status] || 'İptal Edildi'}
-                            </>
-                        ) : (
-                            STATUS_TR[series.status] || series.status
-                        )}
-                    </span>
-                </div>
-            </div>
-            <div className="series-card-body">
-                <div className="series-card-title">{series.title}</div>
-                <div className="series-card-meta">
-                    <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        background: ratingBg,
-                        backdropFilter: 'blur(8px)',
-                        WebkitBackdropFilter: 'blur(8px)',
-                        padding: '2px 7px',
-                        borderRadius: '6px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        color: ratingColor,
-                        border: `1px solid ${ratingBorder}`,
-                    }}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill={ratingColor}>
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                        </svg>
-                        {series.rating != null ? series.rating.toFixed(1) : 'N/A'}
-                    </span>
-                    {chapterCount !== null && (
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
-                            {chapterCount > 0 ? `${chapterCount} bölüm` : 'Bölüm yok'}
+                {/* gradient overlay at bottom */}
+                <div className="sc2-gradient" />
+
+                {/* Top badges */}
+                <div className="sc2-badges-top">
+                    {typeLabel && (
+                        <span style={{ ...badgeBase, background: typeStyle.bg, border: `1px solid ${typeStyle.border}`, color: '#fff' }}>
+                            {typeLabel}
                         </span>
                     )}
+                    {isAdult && (
+                        <span style={{ ...badgeBase, background: 'rgba(239,68,68,0.85)', border: '1px solid rgba(248,113,113,0.5)', color: '#fff' }}>18+</span>
+                    )}
                 </div>
-                <div className="series-card-genres">
-                    {genres.slice(0, 3).map((g, i) => (
-                        <span key={i} className="genre-tag">{GENRE_TR[g] || g}</span>
-                    ))}
+
+                {/* Status badge top-right */}
+                {statusKey && (
+                    <div className="sc2-badge-status">
+                        <span style={{ ...badgeBase, background: statusStyle.bg, border: `1px solid ${statusStyle.border}`, color: '#fff' }}>
+                            {STATUS_TR[statusKey] || statusKey}
+                        </span>
+                    </div>
+                )}
+
+                {/* Bottom info overlay */}
+                <div className="sc2-info">
+                    {/* Rating */}
+                    {rating !== null && (
+                        <div className="sc2-rating">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="#fbbf24">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                            </svg>
+                            {rating.toFixed(1)}
+                        </div>
+                    )}
+                    <div className="sc2-title">{series.title}</div>
+                    <div className="sc2-meta">
+                        {chapterCount !== null && (
+                            <span className="sc2-chapters">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                                </svg>
+                                {chapterCount > 0 ? `${chapterCount} Bölüm` : 'Bölüm Yok'}
+                            </span>
+                        )}
+                        {genres.length > 0 && (
+                            <span className="sc2-genre-pill">{GENRE_TR[genres[0]] || genres[0]}</span>
+                        )}
+                    </div>
                 </div>
             </div>
         </Link>

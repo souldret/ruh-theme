@@ -186,9 +186,9 @@ function SeriesContent() {
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Yükleniyor...</p>
         </div>
-        <div className="series-grid">
+        <div className="sc2-grid">
           {[...Array(12)].map((_, i) => (
-            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 8 }} />
+            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 12 }} />
           ))}
         </div>
       </div>
@@ -374,9 +374,9 @@ function SeriesContent() {
 
       {/* Results */}
       {loading ? (
-        <div className="series-grid glass-series-grid">
+        <div className="sc2-grid">
           {[...Array(12)].map((_, i) => (
-            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 8 }} />
+            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 12 }} />
           ))}
         </div>
       ) : series.length === 0 ? (
@@ -395,7 +395,7 @@ function SeriesContent() {
           )}
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="series-grid glass-series-grid">
+        <div className="sc2-grid">
           {series.map(s => <SeriesCard key={s.id} series={s} user={user} />)}
         </div>
       ) : (
