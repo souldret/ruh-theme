@@ -12678,6 +12678,15 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   color: rgba(255,255,255,0.65);
 }
 
+.sc2-views {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.65);
+}
+
 .sc2-genre-pill {
   font-size: 0.62rem;
   font-weight: 700;

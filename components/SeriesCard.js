@@ -19,21 +19,24 @@ const TYPE_LABEL = {
     'manhwa': 'Manhwa',
     'manhua': 'Manhua',
     'comic': 'Çizgi Roman',
+    'novel': 'Novel',
 };
 
+// Glassmorphism: düşük opaklık bg + renk tonu glow
 const TYPE_COLOR = {
-    'manga':   { bg: 'rgba(99,102,241,0.85)',  border: 'rgba(129,140,248,0.5)' },
-    'manhwa':  { bg: 'rgba(16,185,129,0.85)',  border: 'rgba(52,211,153,0.5)' },
-    'manhua':  { bg: 'rgba(245,158,11,0.85)',  border: 'rgba(252,211,77,0.5)' },
-    'comic':   { bg: 'rgba(239,68,68,0.85)',   border: 'rgba(248,113,113,0.5)' },
+    'manga':   { bg: 'rgba(99,102,241,0.18)',  border: 'rgba(129,140,248,0.55)', color: '#a5b4fc', glow: 'rgba(99,102,241,0.35)' },
+    'manhwa':  { bg: 'rgba(16,185,129,0.18)',  border: 'rgba(52,211,153,0.55)',  color: '#6ee7b7', glow: 'rgba(16,185,129,0.35)' },
+    'manhua':  { bg: 'rgba(245,158,11,0.18)',  border: 'rgba(252,211,77,0.55)',  color: '#fcd34d', glow: 'rgba(245,158,11,0.35)' },
+    'comic':   { bg: 'rgba(239,68,68,0.18)',   border: 'rgba(248,113,113,0.55)', color: '#fca5a5', glow: 'rgba(239,68,68,0.35)' },
+    'novel':   { bg: 'rgba(168,85,247,0.18)',  border: 'rgba(216,180,254,0.55)', color: '#e9d5ff', glow: 'rgba(168,85,247,0.35)' },
 };
 
 const STATUS_COLOR = {
-    'ongoing':   { bg: 'rgba(22,163,74,0.85)',   border: 'rgba(74,222,128,0.4)' },
-    'completed': { bg: 'rgba(99,102,241,0.85)',  border: 'rgba(129,140,248,0.4)' },
-    'hiatus':    { bg: 'rgba(217,119,6,0.85)',   border: 'rgba(252,211,77,0.4)' },
-    'cancelled': { bg: 'rgba(220,38,38,0.85)',   border: 'rgba(248,113,113,0.4)' },
-    'current':   { bg: 'rgba(8,145,178,0.85)',   border: 'rgba(34,211,238,0.4)' },
+    'ongoing':   { bg: 'rgba(22,163,74,0.18)',   border: 'rgba(74,222,128,0.55)',  color: '#86efac', glow: 'rgba(22,163,74,0.35)' },
+    'completed': { bg: 'rgba(99,102,241,0.18)',  border: 'rgba(129,140,248,0.55)', color: '#a5b4fc', glow: 'rgba(99,102,241,0.35)' },
+    'hiatus':    { bg: 'rgba(217,119,6,0.18)',   border: 'rgba(252,211,77,0.55)',  color: '#fcd34d', glow: 'rgba(217,119,6,0.35)' },
+    'cancelled': { bg: 'rgba(220,38,38,0.18)',   border: 'rgba(248,113,113,0.55)', color: '#fca5a5', glow: 'rgba(220,38,38,0.35)' },
+    'current':   { bg: 'rgba(8,145,178,0.18)',   border: 'rgba(34,211,238,0.55)',  color: '#67e8f9', glow: 'rgba(8,145,178,0.35)' },
 };
 
 const GENRE_TR = {
@@ -63,27 +66,39 @@ export default function SeriesCard({ series, priority = false }) {
     const chapterCount = series.chapterCount ?? series.chapter_count ?? null;
     const typeKey = (series.type || '').toLowerCase();
     const typeLabel = TYPE_LABEL[typeKey];
-    const typeStyle = TYPE_COLOR[typeKey] || { bg: 'rgba(80,80,100,0.85)', border: 'rgba(150,150,180,0.4)' };
+    const typeStyle = TYPE_COLOR[typeKey] || { bg: 'rgba(80,80,100,0.18)', border: 'rgba(150,150,180,0.55)', color: '#cbd5e1', glow: 'rgba(80,80,100,0.3)' };
     const statusKey = series.status || '';
-    const statusStyle = STATUS_COLOR[statusKey] || { bg: 'rgba(80,80,100,0.85)', border: 'rgba(150,150,180,0.4)' };
+    const statusStyle = STATUS_COLOR[statusKey] || { bg: 'rgba(80,80,100,0.18)', border: 'rgba(150,150,180,0.55)', color: '#cbd5e1', glow: 'rgba(80,80,100,0.3)' };
 
     const rating = series.rating != null ? series.rating : null;
 
+    const views = series.views ?? null;
+
+    // Glassmorphism rozet base stili
     const badgeBase = {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 4,
-        padding: '3px 8px',
-        borderRadius: 6,
+        padding: '3px 9px',
+        borderRadius: 20,
         fontSize: '0.65rem',
         fontWeight: 800,
-        letterSpacing: '0.06em',
+        letterSpacing: '0.07em',
         textTransform: 'uppercase',
-        backdropFilter: 'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         lineHeight: 1,
         whiteSpace: 'nowrap',
     };
+
+    // Okunma sayısını kısa formatta göster (1.2K, 3.5M vb.)
+    function formatViews(n) {
+        if (n == null) return null;
+        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (n >= 1_000)     return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'B';
+        return String(n);
+    }
+    const viewsFormatted = formatViews(views);
 
     if (isBlurred) {
         return (
@@ -147,22 +162,40 @@ export default function SeriesCard({ series, priority = false }) {
                     className="sc2-img"
                 />
 
-                {/* Sol üst: tür rozeti */}
+                {/* Sol üst: tür rozeti (glassmorphism) */}
                 <div className="sc2-badges-top">
                     {typeLabel && (
-                        <span style={{ ...badgeBase, background: typeStyle.bg, border: `1px solid ${typeStyle.border}`, color: '#fff' }}>
+                        <span style={{
+                            ...badgeBase,
+                            background: typeStyle.bg,
+                            border: `1px solid ${typeStyle.border}`,
+                            color: typeStyle.color,
+                            boxShadow: `0 0 8px ${typeStyle.glow}`,
+                        }}>
                             {typeLabel}
                         </span>
                     )}
                     {isAdult && (
-                        <span style={{ ...badgeBase, background: 'rgba(239,68,68,0.85)', border: '1px solid rgba(248,113,113,0.5)', color: '#fff' }}>18+</span>
+                        <span style={{
+                            ...badgeBase,
+                            background: 'rgba(239,68,68,0.18)',
+                            border: '1px solid rgba(248,113,113,0.55)',
+                            color: '#fca5a5',
+                            boxShadow: '0 0 8px rgba(239,68,68,0.35)',
+                        }}>18+</span>
                     )}
                 </div>
 
-                {/* Sağ üst: durum rozeti */}
+                {/* Sağ üst: durum rozeti (glassmorphism) */}
                 {statusKey && (
                     <div className="sc2-badge-status">
-                        <span style={{ ...badgeBase, background: statusStyle.bg, border: `1px solid ${statusStyle.border}`, color: '#fff' }}>
+                        <span style={{
+                            ...badgeBase,
+                            background: statusStyle.bg,
+                            border: `1px solid ${statusStyle.border}`,
+                            color: statusStyle.color,
+                            boxShadow: `0 0 8px ${statusStyle.glow}`,
+                        }}>
                             {STATUS_TR[statusKey] || statusKey}
                         </span>
                     </div>
@@ -189,8 +222,14 @@ export default function SeriesCard({ series, priority = false }) {
                                 {chapterCount > 0 ? `Bölüm ${chapterCount}` : 'Bölüm Yok'}
                             </span>
                         )}
-                        {genres.length > 0 && (
-                            <span className="sc2-genre-pill">{GENRE_TR[genres[0]] || genres[0]}</span>
+                        {viewsFormatted !== null && (
+                            <span className="sc2-views">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                {viewsFormatted}
+                            </span>
                         )}
                     </div>
                 </div>
