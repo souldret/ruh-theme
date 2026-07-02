@@ -2857,16 +2857,15 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                             onChange={async (e) => {
                                                 const file = e.target.files?.[0];
                                                 if (!file) return;
-                                                const fd = new FormData(); fd.append('cover', file);
-                                                fd.append('seriesIds', JSON.stringify(selectedSeriesIds));
                                                 try {
                                                     show('Kapak görselleri güncelleniyor...', 'info');
-                                                    for (const sid of selectedSeriesIds) {
-                                                        const f2 = new FormData(); f2.append('cover', file); f2.append('seriesId', sid);
-                                                        await authFetch(`/api/admin?action=update-cover`, { method: 'POST', body: f2 });
-                                                    }
-                                                    show('Kapak görselleri güncellendi!', 'success');
-                                                    loadStats();
+                                                    const fd = new FormData();
+                                                    fd.append('cover', file);
+                                                    fd.append('seriesIds', JSON.stringify(selectedSeriesIds));
+                                                    const res = await authFetch('/api/admin?action=bulk-update-cover', { method: 'POST', body: fd });
+                                                    const data = await res.json();
+                                                    show(data.message || 'Kapak görselleri güncellendi!', res.ok ? 'success' : 'error');
+                                                    if (res.ok) { setSelectedSeriesIds([]); loadStats(); }
                                                 } catch { show('Bir hata oluştu', 'error'); }
                                                 e.target.value = '';
                                             }}

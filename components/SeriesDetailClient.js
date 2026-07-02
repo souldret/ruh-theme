@@ -134,7 +134,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
     const [coverLightboxOpen, setCoverLightboxOpen] = useState(false);
 
     // User rating state
-    const [userRating, setUserRating] = useState(null); // 1-10
+    const [userRating, setUserRating] = useState(null); // 1-5
     const [hoverRating, setHoverRating] = useState(null);
     const [ratingLoading, setRatingLoading] = useState(false);
     const [ratingVoteCount, setRatingVoteCount] = useState(series.vote_count || 0);

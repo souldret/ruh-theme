@@ -82,7 +82,7 @@ export async function POST(request) {
         // Check basic permissions based on action category
         const db = getDb();
         let requiredPerm = 'admin';
-        if (['add-series', 'update-series'].includes(action)) requiredPerm = 'manage_series';
+        if (['add-series', 'update-series', 'bulk-update-cover'].includes(action)) requiredPerm = 'manage_series';
         else if (['delete-series', 'bulk-delete-series'].includes(action)) requiredPerm = 'delete_series';
         else if (['delete-media'].includes(action)) requiredPerm = 'manage_series';
         else if (['add-chapter', 'update-chapter', 'delete-chapter', 'delete-all-chapters', 'delete-selected-chapters', 'upload-pages', 'delete-page', 'reorder-pages'].includes(action)) requiredPerm = 'upload_chapters';
@@ -736,6 +736,39 @@ export async function POST(request) {
                 user.id, user.username, 'delete_series', `Deleted series ID: ${seriesId} (${seriesRow?.title || ''})`
             );
             return NextResponse.json({ message: 'Series deleted' });
+        }
+
+        if (action === 'bulk-update-cover') {
+            const db = getDb();
+            let seriesIds = [];
+            try { seriesIds = JSON.parse(formData.get('seriesIds') || '[]'); } catch { }
+            if (!Array.isArray(seriesIds) || seriesIds.length === 0) {
+                return NextResponse.json({ error: 'seriesIds gerekli' }, { status: 400 });
+            }
+            const coverFile = formData.get('cover');
+            if (!coverFile || !coverFile.name) {
+                return NextResponse.json({ error: 'Kapak görseli gerekli' }, { status: 400 });
+            }
+            const { nanoid } = await import('nanoid');
+            const coverDir = joinPath(process.cwd(), 'public', 'uploads', 'covers');
+            if (!fs.existsSync(coverDir)) fs.mkdirSync(coverDir, { recursive: true });
+            const ext = coverFile.name.split('.').pop() || 'jpg';
+            let updated = 0;
+            for (const sid of seriesIds) {
+                try {
+                    const fileName = `series-${sid}-${nanoid(8)}.${ext}`;
+                    const filePath = joinPath(coverDir, fileName);
+                    const arrayBuffer = await coverFile.arrayBuffer();
+                    fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
+                    const oldRow = db.prepare('SELECT cover_url FROM series WHERE id = ?').get(sid);
+                    if (oldRow?.cover_url && oldRow.cover_url.startsWith('/uploads/covers/')) {
+                        try { const old = joinPath(process.cwd(), 'public', oldRow.cover_url); if (fs.existsSync(old)) fs.unlinkSync(old); } catch { }
+                    }
+                    db.prepare('UPDATE series SET cover_url = ? WHERE id = ?').run(`/uploads/covers/${fileName}`, sid);
+                    updated++;
+                } catch { }
+            }
+            return NextResponse.json({ message: `${updated} serinin kapak görseli güncellendi` });
         }
 
         if (action === 'bulk-delete-series') {
