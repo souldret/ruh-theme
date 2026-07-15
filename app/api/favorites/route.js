@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserFromRequest } from '@/lib/auth';
-import { createRateLimiter } from '@/lib/ratelimit';
-
-const favoritesRateLimit = createRateLimiter(20, 60 * 1000); // 20 istek/dk
 
 export async function GET(request) {
     try {
@@ -26,15 +23,6 @@ export async function GET(request) {
 
 export async function POST(request) {
     try {
-        // Rate limit kontrolü
-        const rl = favoritesRateLimit(request);
-        if (!rl.success) {
-            return NextResponse.json(
-                { error: `Çok fazla istek. ${rl.retryAfter} saniye sonra tekrar deneyin.` },
-                { status: 429 }
-            );
-        }
-
         const user = getUserFromRequest(request);
         if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 

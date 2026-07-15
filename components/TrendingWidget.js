@@ -1,8 +1,29 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
-import Image from 'next/image';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthProvider';
+
+const GENRE_TR = {
+  'Action': 'Aksiyon', 'Adventure': 'Macera', 'Comedy': 'Komedi', 'Drama': 'Drama',
+  'Fantasy': 'Fantastik', 'Historical': 'Tarihi', 'Horror': 'Korku', 'Isekai': 'Isekai',
+  'Martial Arts': 'Dövüş', 'Mystery': 'Gizem', 'Reincarnation': 'Reenkarnasyon',
+  'Romance': 'Romantik', 'School': 'Okul', 'Sci-Fi': 'Bilim Kurgu',
+  'Supernatural': 'Doğaüstü', 'Thriller': 'Gerilim', 'Ecchi': 'Ecchi', 'Harem': 'Harem',
+  'Josei': 'Josei', 'Mature': 'Yetişkin', 'Mecha': 'Mecha', 'Psychological': 'Psikolojik',
+  'Seinen': 'Seinen', 'Shoujo': 'Shoujo', 'Shounen': 'Shounen', 'Slice of Life': 'Günlük',
+  'Sports': 'Spor', 'Tragedy': 'Trajedi', 'Webtoon': 'Webtoon', 'Manhwa': 'Manhwa', 'Manhua': 'Manhua'
+};
+
+function parseGenres(genresStr) {
+  if (!genresStr) return [];
+  try {
+    const arr = JSON.parse(genresStr);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    if (typeof genresStr === 'string') return genresStr.split(',').map(s => s.trim());
+    return [];
+  }
+}
 
 // Trend kartları için yetişkin içerik overlay bileşeni
 function AdultCardOverlay({ isAdult, user }) {
@@ -29,14 +50,7 @@ export function Glass3DTrending({ series, index, isBlocked, href, user }) {
     <div className="trend-glass3d-container">
       <Link href={href || `/series/${series.slug || series.id}`} className="trend-glass3d-card" style={{ display: 'block', position: 'relative' }}>
         <div className="tg-bg">
-          <Image
-            src={series.cover_url || '/demo/cover1.jpg'}
-            alt=""
-            fill
-            loading="lazy"
-            sizes="166px"
-            style={isBlocked ? { filter: 'blur(10px)', transform: 'scale(1.1)' } : {}}
-          />
+          <img src={series.cover_url || '/demo/cover1.jpg'} alt="" loading="lazy" style={isBlocked ? { filter: 'blur(10px)', transform: 'scale(1.1)' } : {}} />
         </div>
         <div className="tg-overlay">
           <div className="tg-title">{isBlocked ? '18+' : series.title}</div>
@@ -50,17 +64,80 @@ export function Glass3DTrending({ series, index, isBlocked, href, user }) {
 
 export default function TrendingWidget({ design, trending, autoScrollEnabled = true }) {
   const { user } = useAuth();
+  const containerRef = useRef(null);
+  const animFrameRef = useRef(null);
+  const pausedRef = useRef(false);
+  const posRef = useRef(0); // gerçek scroll pozisyonunu takip eder (senkronizasyon için)
+  const SPEED = 0.55; // piksel/frame — yavaş ve akıcı
   const [autoScroll, setAutoScroll] = useState(autoScrollEnabled);
-  const [paused, setPaused] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
-  // CSS marquee yaklaşımı: DOM scroll limiti olmadan sonsuz döngü
-  // İki kopya yeterli — CSS animation ile mükemmel loop
-  const doubleList = trending.length > 0 ? [...trending, ...trending] : [];
+  // Track mobile state
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
-  // Animasyon süresi: kart sayısı * kart genişliği / hız — yavaş ve akıcı
-  const CARD_WIDTH = 166; // 150px + 16px gap
-  const SPEED_PPS = 55; // piksel/saniye
-  const duration = trending.length > 0 ? (trending.length * CARD_WIDTH) / SPEED_PPS : 20;
+  // 3 kat kopyalama: sonsuz döngü için daha güvenli tampon
+  const tripleList = trending.length > 0 ? [...trending, ...trending, ...trending] : [];
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !autoScroll || trending.length === 0) return;
+
+    // İlk çalıştırmada mevcut scrollLeft'i al
+    posRef.current = el.scrollLeft || 0;
+
+    function step() {
+      if (!pausedRef.current && el) {
+        posRef.current += SPEED;
+        // Üçlü listenin 1/3'üne ulaşınca ortadaki kopyaya atla (görsel sıçrama olmaz)
+        const oneThird = el.scrollWidth / 3;
+        if (posRef.current >= oneThird * 2) {
+          posRef.current = oneThird;
+        }
+        // scrollLeft küçükse (kullanıcı elle geriye sürükledi) düzelt
+        if (posRef.current < 1) {
+          posRef.current = oneThird;
+        }
+        el.scrollLeft = posRef.current;
+      }
+      animFrameRef.current = requestAnimationFrame(step);
+    }
+
+    // Başlamadan önce kısa bir gecikme — DOM tamamen render olana kadar bekle
+    const timer = setTimeout(() => {
+      animFrameRef.current = requestAnimationFrame(step);
+    }, 120);
+
+    return () => {
+      clearTimeout(timer);
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [autoScroll, trending.length]);
+
+  const handleMouseEnter = () => { pausedRef.current = true; };
+  const handleMouseLeave = () => {
+    // Pozisyonu gerçek scrollLeft'ten senkronize et
+    if (containerRef.current) posRef.current = containerRef.current.scrollLeft;
+    pausedRef.current = false;
+  };
+  const handleTouchStart = () => { pausedRef.current = true; };
+  const handleTouchEnd = () => {
+    // Dokunuş bırakıldığında pozisyonu senkronize et, sonra devam et
+    if (containerRef.current) posRef.current = containerRef.current.scrollLeft;
+    // 1500ms sonra otomatik kaydırma devam etmeden once pozisyonu tekrar senkronize et
+    // (kullanıcı bu sürede manuel olarak kaydırmıs olabilir)
+    setTimeout(() => {
+      if (containerRef.current) posRef.current = containerRef.current.scrollLeft;
+      pausedRef.current = false;
+    }, 1500);
+  };
+
+  // Mobilde de triple list kullan (seamless loop için), ancak otomatik kaydırma kapalıysa orijinal listeyi göster
+  const displayList = autoScroll ? tripleList : trending;
 
   return (
     <div>
@@ -68,7 +145,10 @@ export default function TrendingWidget({ design, trending, autoScrollEnabled = t
       <div className="trend-autoscroll-row">
         <button
           className={`trend-autoscroll-btn${autoScroll ? ' active' : ''}`}
-          onClick={() => setAutoScroll(v => !v)}
+          onClick={() => {
+            setAutoScroll(v => !v);
+            if (containerRef.current) posRef.current = containerRef.current.scrollLeft;
+          }}
           title={autoScroll ? 'Otomatik kaydırmayı durdur' : 'Otomatik kaydırmayı başlat'}
         >
           {autoScroll ? (
@@ -89,56 +169,28 @@ export default function TrendingWidget({ design, trending, autoScrollEnabled = t
         </button>
       </div>
 
-      {autoScroll ? (
-        /* CSS transform marquee — sonsuz, takılmasız */
-        <div className="trend-marquee-outer">
-          <div
-            className="trend-marquee-track"
-            style={{
-              animationDuration: `${duration}s`,
-              animationPlayState: paused ? 'paused' : 'running',
-            }}
-            onMouseEnter={() => setPaused(true)}
-            onMouseLeave={() => setPaused(false)}
-            onTouchStart={() => setPaused(true)}
-            onTouchEnd={() => setPaused(false)}
-          >
-            {doubleList.map((s, idx) => {
-              const displayIdx = idx % (trending.length || 1);
-              const isBlocked = s.is_adult && !user;
-              const href = isBlocked ? '/login' : `/seri/${s.slug || s.id}`;
-              return (
-                <Glass3DTrending
-                  key={`marquee-${s.id}-${idx}`}
-                  series={s}
-                  index={displayIdx}
-                  isBlocked={isBlocked}
-                  href={href}
-                  user={user}
-                />
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        /* Manuel kaydırma modu */
-        <div className="trend-list-container">
-          {trending.map((s, idx) => {
-            const isBlocked = s.is_adult && !user;
-            const href = isBlocked ? '/login' : `/seri/${s.slug || s.id}`;
-            return (
-              <Glass3DTrending
-                key={`manual-${s.id}-${idx}`}
-                series={s}
-                index={idx}
-                isBlocked={isBlocked}
-                href={href}
-                user={user}
-              />
-            );
-          })}
-        </div>
-      )}
+      <div
+        ref={containerRef}
+        className="trend-list-container"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        style={autoScroll && !isMobile ? {
+          overflow: 'hidden',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
+          userSelect: 'none',
+        } : {}}
+      >
+        {displayList.map((s, idx) => {
+          const displayIdx = idx % (trending.length || 1);
+          const isBlocked = s.is_adult && !user;
+          const href = isBlocked ? '/login' : `/series/${s.slug || s.id}`;
+          const key = `${s.id}-raw-${idx}`;
+          return <Glass3DTrending key={key} series={s} index={displayIdx} isBlocked={isBlocked} href={href} user={user} />;
+        })}
+      </div>
     </div>
   );
 }

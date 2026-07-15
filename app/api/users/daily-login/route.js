@@ -3,13 +3,6 @@ import { getDb } from '@/lib/db';
 import { getVerifiedUser } from '@/lib/auth';
 import { createRateLimiter } from '@/lib/ratelimit';
 
-function getPointsName(db) {
-    try {
-        const row = db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'points_name'").get();
-        return row?.setting_value || 'Yomi Puanı';
-    } catch { return 'Yomi Puanı'; }
-}
-
 const rateLimiter = createRateLimiter(10, 60 * 1000); // 10 req/min
 
 export async function POST(request) {
@@ -67,15 +60,16 @@ export async function POST(request) {
             WHERE id = ?
         `).run(reward, newStreak, today, user.id);
 
+        const changed = true;
+
         const updated = db.prepare('SELECT yomi_points, login_streak FROM users WHERE id = ?').get(user.id);
-        const pointsName = getPointsName(db);
 
         return NextResponse.json({
             success: true,
             reward,
             newTotal: updated?.yomi_points,
             streak: updated?.login_streak || 1,
-            message: `+${reward} ${pointsName}! Günlük ödül alındı. ${updated?.login_streak > 1 ? `🔥 ${updated.login_streak} günlük seri!` : ''}`,
+            message: `+${reward} Yomi Puan! Günlük ödül alındı. ${updated?.login_streak > 1 ? `🔥 ${updated.login_streak} günlük seri!` : ''}`,
         });
 
     } catch (error) {

@@ -1,48 +1,28 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getSettingsCache, setSettingsCache, SETTINGS_CACHE_TTL } from '@/lib/settings-cache';
 
 export const dynamic = 'force-dynamic';
-
-// updates_per_page için settings cache'ini paylaş — her request'te DB sorgusu yapma
-function getUpdatesPerPage(db) {
-    const now = Date.now();
-    const { cache, cacheAt } = getSettingsCache();
-    const cacheValid = cache && now - cacheAt < SETTINGS_CACHE_TTL;
-    if (cacheValid && cache._updates_per_page !== undefined) {
-        return cache._updates_per_page;
-    }
-    const setting = db.prepare(`SELECT setting_value FROM app_settings WHERE setting_key = 'updates_per_page'`).get();
-    const value = setting ? (parseInt(setting.setting_value) || 16) : 16;
-    // Yalnızca geçerli bir cache varsa piggyback yap — boşken yazmak getSiteSettings()'i bozar
-    if (cacheValid) {
-        setSettingsCache({ ...cache, _updates_per_page: value });
-    }
-    return value;
-}
 
 export async function GET(request) {
     try {
         const db = getDb();
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page')) || 1;
-        // adult: '1' = yetişkin içerik göster, '0' veya yoksa normal içerik
-        const showAdult = searchParams.get('adult') === '1';
 
-        // per_page: önce query param, yoksa admin ayarı (cache'li), yoksa varsayılan 16
+        // per_page: önce query param, yoksa admin ayarı, yoksa varsayılan 16
         let perPage = parseInt(searchParams.get('limit')) || 0;
         if (!perPage) {
-            perPage = getUpdatesPerPage(db);
+            const setting = db.prepare(`SELECT value FROM app_settings WHERE key = 'updates_per_page'`).get();
+            perPage = setting ? (parseInt(setting.value) || 16) : 16;
         }
         const offset = (page - 1) * perPage;
 
-        // Toplam seri sayısı — adult filtresine göre (sayfalama için)
-        const adultFilter = showAdult ? 's.is_adult = 1' : 's.is_adult = 0 OR s.is_adult IS NULL';
+        // Toplam seri sayısı (sayfalama için)
         const totalRow = db.prepare(`
             SELECT COUNT(DISTINCT s.id) as total
             FROM series s
             JOIN chapters ch ON s.id = ch.series_id
-            WHERE s.published = 1 AND (${adultFilter})
+            WHERE s.published = 1
         `).get();
         const total = totalRow?.total || 0;
 
@@ -51,21 +31,14 @@ export async function GET(request) {
             SELECT s.id, s.title, s.slug, s.cover_url, s.status, s.type, s.views, s.is_adult, MAX(ch.created_at) as last_update
             FROM series s
             JOIN chapters ch ON s.id = ch.series_id
-            WHERE s.published = 1 AND (${adultFilter})
+            WHERE s.published = 1
             GROUP BY s.id
             ORDER BY last_update DESC
             LIMIT ? OFFSET ?
         `).all(perPage, offset);
 
         if (recentSeries.length === 0) {
-            return NextResponse.json(
-                { updates: [], hasMore: false, total, page, perPage },
-                {
-                    headers: {
-                        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
-                    }
-                }
-            );
+            return NextResponse.json({ updates: [], hasMore: false, total, page, perPage });
         }
 
         // Fetch the latest 4 chapters per series in a single query — eliminates N+1
@@ -75,7 +48,7 @@ export async function GET(request) {
             SELECT id, series_id, chapter_number, title, created_at,
                    CASE WHEN created_at >= datetime('now', '-1 day')
              OR created_at >= datetime('now', 'localtime', '-1 day')
-         THEN 1 ELSE 0 END as is_new
+        THEN 1 ELSE 0 END as is_new
             FROM (
                 SELECT id, series_id, chapter_number, title, created_at,
                        ROW_NUMBER() OVER (PARTITION BY series_id ORDER BY chapter_number DESC) as rn
@@ -102,15 +75,7 @@ export async function GET(request) {
         const totalPages = Math.ceil(total / perPage);
         const hasMore = page < totalPages;
 
-        // Performans: Cache header eklendi - 60 saniye fresh, 120 saniye stale-while-revalidate
-        return NextResponse.json(
-            { updates, hasMore, total, page, perPage, totalPages },
-            {
-                headers: {
-                    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
-                }
-            }
-        );
+        return NextResponse.json({ updates, hasMore, total, page, perPage, totalPages });
     } catch (error) {
         console.error('GET /api/series/latest-updates error:', error);
         return NextResponse.json({ error: 'Failed to fetch latest updates' }, { status: 500 });

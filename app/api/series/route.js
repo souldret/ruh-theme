@@ -2,22 +2,6 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 
-// EN→TR ve TR→EN eşleşme tablosu — genre filtresini her iki dilde de çalıştırmak için
-const GENRE_TR_MAP = {
-    'Action': 'Aksiyon', 'Adventure': 'Macera', 'Comedy': 'Komedi', 'Drama': 'Drama',
-    'Fantasy': 'Fantastik', 'Historical': 'Tarihi', 'Horror': 'Korku', 'Isekai': 'Isekai',
-    'Martial Arts': 'Dövüş Sanatları', 'Mystery': 'Gizem', 'Reincarnation': 'Reenkarnasyon',
-    'Romance': 'Romantik', 'School': 'Okul', 'Sci-Fi': 'Bilim Kurgu',
-    'Supernatural': 'Doğaüstü', 'Thriller': 'Gerilim',
-    'Ecchi': 'Ecchi', 'Harem': 'Harem', 'Josei': 'Josei', 'Mature': 'Yetişkin',
-    'Mecha': 'Mecha', 'Psychological': 'Psikolojik', 'Seinen': 'Seinen',
-    'Shoujo': 'Shoujo', 'Shounen': 'Shounen', 'Slice of Life': 'Günlük Yaşam',
-    'Sports': 'Spor', 'Tragedy': 'Trajedi', 'Webtoon': 'Webtoon',
-    'Manhwa': 'Manhwa', 'Manhua': 'Manhua',
-};
-// TR→EN ters haritası
-const GENRE_EN_MAP = Object.fromEntries(Object.entries(GENRE_TR_MAP).map(([en, tr]) => [tr, en]));
-
 export async function GET(request) {
     try {
         const db = getDb();
@@ -43,24 +27,11 @@ export async function GET(request) {
             params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
 
-        // Genre filtresi: case-insensitive + EN/TR çift yönlü eşleşme
-        // Veritabanında genre'ler "Action", "action", "Aksiyon" gibi farklı formatlarda saklanmış olabilir
+        // Server-side AND filter for every selected genre
+        // JSON'da "GenreName" olarak saklandığından tırnak içinde arama yaparak alt-string false-positive'lerini önlüyoruz
         for (const g of genres) {
-            const gLower = g.toLowerCase();
-            // Olası tüm varyantları topla: İngilizce, Türkçe, küçük harf
-            const variants = new Set([g]);
-            if (GENRE_TR_MAP[g]) variants.add(GENRE_TR_MAP[g]);       // EN→TR
-            if (GENRE_EN_MAP[g]) variants.add(GENRE_EN_MAP[g]);       // TR→EN
-            // Küçük harf versiyonları
-            variants.add(gLower);
-            variants.add(g.charAt(0).toUpperCase() + g.slice(1).toLowerCase());
-
-            // Her varyant için LOWER() ile case-insensitive OR koşulu oluştur
-            const orClauses = [...variants].map(() => 'LOWER(s.genres) LIKE ?').join(' OR ');
-            whereClause += ` AND (${orClauses})`;
-            for (const v of variants) {
-                params.push(`%"${v.toLowerCase()}"%`);
-            }
+            whereClause += ' AND s.genres LIKE ?';
+            params.push(`%"${g}"%`);
         }
 
         if (status) {
@@ -104,19 +75,11 @@ export async function GET(request) {
             genres: JSON.parse(s.genres || '[]'),
         }));
 
-        // Arama/filtre parametresi yoksa kısa süreli CDN cache'e izin ver
-        const isFilteredRequest = search || genreParam || status || type;
-        const cacheHeader = isFilteredRequest
-            ? 'no-store'
-            : 'public, s-maxage=60, stale-while-revalidate=300';
-
         return NextResponse.json({
             series: withParsedGenres,
             total,
             page,
             hasMore: offset + series.length < total,
-        }, {
-            headers: { 'Cache-Control': cacheHeader },
         });
     } catch (error) {
         console.error('GET /api/series error:', error);

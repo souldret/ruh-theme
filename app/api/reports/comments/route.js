@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getUserFromRequest, getVerifiedUser, hasPermission } from '@/lib/auth';
+import { getUserFromRequest, getVerifiedUser } from '@/lib/auth';
 
 // ── In-memory rate limiter for comment reports ─────────────────────
 const reportRateLimitMap = new Map();
@@ -40,9 +40,7 @@ export async function GET(request) {
         }
 
         const dbUser = db.prepare('SELECT role FROM users WHERE id = ?').get(tokenUser.id);
-        const builtinCanManageComments = dbUser && ['admin', 'manager', 'moderator'].includes(dbUser.role);
-        const customCanManageComments = dbUser && hasPermission(dbUser, 'manage_comments', db);
-        if (!builtinCanManageComments && !customCanManageComments) {
+        if (!dbUser || !['admin', 'manager', 'moderator'].includes(dbUser.role)) {
             console.error('GET /api/reports/comments - Insufficient role:', dbUser?.role);
             return NextResponse.json({ success: false, error: 'Yetkisiz erişim' }, { status: 403 });
         }
@@ -209,8 +207,7 @@ export async function PUT(request) {
         }
 
         const dbUser = db.prepare('SELECT role FROM users WHERE id = ?').get(tokenUser.id);
-        const canManageComments2 = dbUser && (['admin', 'manager', 'moderator'].includes(dbUser.role) || hasPermission(dbUser, 'manage_comments', db));
-        if (!canManageComments2) {
+        if (!dbUser || !['admin', 'manager', 'moderator'].includes(dbUser.role)) {
             return NextResponse.json({ success: false, error: 'Yetkisiz erişim' }, { status: 403 });
         }
 
@@ -288,8 +285,7 @@ export async function DELETE(request) {
         }
 
         const dbUser = db.prepare('SELECT role FROM users WHERE id = ?').get(tokenUser.id);
-        const canManageComments3 = dbUser && (['admin', 'manager', 'moderator'].includes(dbUser.role) || hasPermission(dbUser, 'manage_comments', db));
-        if (!canManageComments3) {
+        if (!dbUser || !['admin', 'manager', 'moderator'].includes(dbUser.role)) {
             return NextResponse.json({ success: false, error: 'Yetkisiz erişim' }, { status: 403 });
         }
 

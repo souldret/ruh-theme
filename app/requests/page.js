@@ -134,13 +134,12 @@ export default function RequestsPage() {
         { key: 'reviewing', label: appSettings.lang_status_reviewing || 'İnceleniyor' },
         { key: 'approved',  label: appSettings.lang_status_approved  || 'Onaylandı' },
         { key: 'added',     label: appSettings.lang_status_added     || 'Eklendi' },
-        { key: 'rejected',  label: appSettings.lang_status_rejected  || 'Reddedildi' },
     ];
 
     return (
-        <div className="page-container glass-page-container" style={{ maxWidth: 860, padding: '24px 16px' }}>
+        <div className="page-container" style={{ maxWidth: 860, padding: '24px 16px' }}>
             {/* Header */}
-            <div className="requests-header glass-panel" style={{ padding: '20px', marginBottom: '20px' }}>
+            <div className="requests-header">
                 <div>
                     <h1 className="requests-title">
                         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -247,7 +246,7 @@ export default function RequestsPage() {
             )}
 
             {/* Filter tabs */}
-            <div className="requests-filters glass-panel" style={{ padding: '16px', marginBottom: '20px' }}>
+            <div className="requests-filters">
                 {FILTER_TABS.map(f => (
                     <button
                         key={f.key}
@@ -282,7 +281,7 @@ export default function RequestsPage() {
                         const hasDetails = req.reason || req.source_url || req.admin_note;
 
                         return (
-                            <div key={req.id} className={`request-card glass-panel glass-panel-hoverable ${isExpanded ? 'expanded' : ''}`}>
+                            <div key={req.id} className={`request-card ${isExpanded ? 'expanded' : ''}`}>
                                 {/* Upvote column */}
                                 <div className="req-vote">
                                     <button
@@ -391,7 +390,10 @@ export default function RequestsPage() {
                         {myRequests.map(req => {
                             const cfg = STATUS_CONFIG[req.status] || { label: req.status, color: '#9ca3af', icon: null };
                             return (
-                                <div key={req.id} className="glass-panel glass-panel-hoverable" style={{
+                                <div key={req.id} style={{
+                                    background: 'var(--bg-card)',
+                                    borderRadius: '16px',
+                                    border: '1px solid rgba(255,255,255,0.05)',
                                     padding: '20px 24px',
                                     display: 'flex',
                                     alignItems: 'center',

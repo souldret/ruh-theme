@@ -186,9 +186,9 @@ function SeriesContent() {
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Yükleniyor...</p>
         </div>
-        <div className="sc2-grid">
+        <div className="series-grid">
           {[...Array(12)].map((_, i) => (
-            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 12 }} />
+            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 8 }} />
           ))}
         </div>
       </div>
@@ -212,27 +212,29 @@ function SeriesContent() {
   return (
     <div className="page-container page-section fade-in glass-page-container">
       {/* Header */}
-      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <h1 style={{ fontSize: '1.55rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(139,92,246,0.15)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#a78bfa', flexShrink: 0 }}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </span>
-            {t('lang_browse_title', 'Manga Keşfet')}
-          </h1>
-          {t('lang_browse_subtitle', '') && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 0' }}>{t('lang_browse_subtitle', '')}</p>
-          )}
-        </div>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '4px 12px' }}>
-          {loading ? '...' : `${total > 0 ? total : series.length} ${t('lang_stat_series', 'seri')}${hasFilters ? ' • filtrelenmiş' : ''}`}
-        </span>
+      <div className="glass-page-header glass-panel" style={{ marginBottom: 20, padding: '24px', borderRadius: '16px' }}>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          {t('lang_browse_title', 'Manga Keşfet')}
+        </h1>
+        {t('lang_browse_subtitle', '') && (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 4 }}>
+            {t('lang_browse_subtitle', '')}
+          </p>
+        )}
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+          {loading
+            ? t('lang_reader_loading', 'Yükleniyor...')
+            : `${total > 0 ? total : series.length} ${t('lang_stat_series', 'seri')}${hasFilters ? ' (filtrelenmiş)' : ''}`}
+        </p>
       </div>
 
       {/* Filter Bar */}
-      <div className="filter-bar glass-filter-bar glass-panel" style={{ marginBottom: 12, padding: '12px 16px', borderRadius: '14px' }}>
-        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', flex: 1, gap: 0, alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+      <div className="filter-bar glass-filter-bar glass-panel" style={{ marginBottom: 12, padding: '16px', borderRadius: '16px' }}>
+        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', flex: 1, gap: 0 }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
             <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -250,7 +252,7 @@ function SeriesContent() {
                 padding: '10px 14px 10px 42px',
                 background: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '12px',
+                borderRadius: '8px 0 0 8px',
                 color: 'var(--text-primary)',
                 fontSize: '0.88rem',
                 outline: 'none',
@@ -266,29 +268,22 @@ function SeriesContent() {
               }}
             />
             <button type="submit" style={{
-              padding: '10px 20px',
+              padding: '10px 16px',
               background: 'var(--accent)',
               border: '1px solid var(--accent)',
-              borderRadius: '12px',
+              borderRadius: '0 8px 8px 0',
               color: '#fff',
               cursor: 'pointer',
-              fontWeight: 700,
+              fontWeight: 600,
               fontSize: '0.82rem',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              transition: 'background 0.2s, box-shadow 0.2s, transform 0.15s',
-              boxShadow: '0 2px 10px rgba(var(--accent-rgb,94,114,228),0.4)',
-              flexShrink: 0,
-              marginLeft: 8,
-            }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(var(--accent-rgb,94,114,228),0.55)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 2px 10px rgba(var(--accent-rgb,94,114,228),0.4)'; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <span>Ara</span>
+              <span style={{ display: 'none' }}>Ara</span>
             </button>
           </div>
         </form>
@@ -374,9 +369,9 @@ function SeriesContent() {
 
       {/* Results */}
       {loading ? (
-        <div className="sc2-grid">
+        <div className="series-grid glass-series-grid">
           {[...Array(12)].map((_, i) => (
-            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 12 }} />
+            <div key={i} className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 8 }} />
           ))}
         </div>
       ) : series.length === 0 ? (
@@ -395,7 +390,7 @@ function SeriesContent() {
           )}
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="sc2-grid">
+        <div className="series-grid glass-series-grid">
           {series.map(s => <SeriesCard key={s.id} series={s} user={user} />)}
         </div>
       ) : (

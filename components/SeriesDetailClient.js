@@ -1,15 +1,11 @@
 'use client';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import CommentSection from '@/components/CommentSection';
 import SeriesCard from '@/components/SeriesCard';
 import { useAuth } from '@/components/AuthProvider';
-import { useSettings } from '@/components/SettingsProvider';
 import { getDominantColor, generateAdaptivePalette } from '@/components/ColorUtils';
-
-// Bileşen dışında tek bir formatter instance — her render'da yeniden oluşturulmasını önler
-const trFormatter = new Intl.NumberFormat('tr-TR');
 
 const CHAPTERS_INITIAL = 20;
 const CHAPTERS_PER_LOAD = 20;
@@ -79,7 +75,15 @@ function formatType(type) {
     return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
 }
 
+import { getAppSettings } from '@/lib/settingsCache';
 
+function useAppSettings() {
+    const [s, setS] = useState({});
+    useEffect(() => {
+        getAppSettings().then(settings => setS(settings)).catch(() => {});
+    }, []);
+    return s;
+}
 
 const ReadingIcon = () => (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -116,7 +120,7 @@ const LIST_OPTIONS_BASE = [
 
 export default function SeriesDetailClient({ series, chapters, relatedSeries: initialRelated }) {
     const { user, authFetch } = useAuth();
-    const { settings: appSettings = {} } = useSettings() || {};
+    const appSettings = useAppSettings();
     const [relatedSeries, setRelatedSeries] = useState(initialRelated || []);
     const [isFavorite, setIsFavorite] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -134,7 +138,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
     const [coverLightboxOpen, setCoverLightboxOpen] = useState(false);
 
     // User rating state
-    const [userRating, setUserRating] = useState(null); // 1-5
+    const [userRating, setUserRating] = useState(null); // 1-10
     const [hoverRating, setHoverRating] = useState(null);
     const [ratingLoading, setRatingLoading] = useState(false);
     const [ratingVoteCount, setRatingVoteCount] = useState(series.vote_count || 0);
@@ -199,21 +203,11 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
     }, [series?.id, user, chapters]);
 
     useEffect(() => {
-        let rafId = null;
         function handleScroll() {
-            // rAF throttle — scroll jank önler
-            if (rafId) return;
-            rafId = requestAnimationFrame(() => {
-                rafId = null;
-                const shouldShow = window.scrollY > 450;
-                setShowStickyCTA(prev => prev === shouldShow ? prev : shouldShow);
-            });
+            setShowStickyCTA(window.scrollY > 450);
         }
         window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => {
-            window.removeEventListener('scroll', handleScroll);
-            if (rafId) cancelAnimationFrame(rafId);
-        };
+        return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
     // Fetch related series if not provided server-side
@@ -355,52 +349,32 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
         });
     }
 
-    const fmtNum = useCallback((n) => {
+    function fmtNum(n) {
         if (!n) return '0';
-        return trFormatter.format(n);
-    }, []);
+        return new Intl.NumberFormat('tr-TR').format(n);
+    }
 
-    const genres = useMemo(() =>
-        Array.isArray(series.genres) ? series.genres : (() => { try { return JSON.parse(series.genres || '[]'); } catch { return []; } })()
-    , [series.genres]);
-    const palette = useMemo(() => generateAdaptivePalette(dominantColor), [dominantColor]);
-    const adaptiveStyles = useMemo(() => palette ? {
+    const genres = Array.isArray(series.genres) ? series.genres : (() => { try { return JSON.parse(series.genres || '[]'); } catch { return []; } })();
+    const palette = generateAdaptivePalette(dominantColor);
+    const adaptiveStyles = palette ? {
         '--accent': palette.accent,
         '--accent-light': palette.accentLight,
         '--accent-glow': palette.accentGlow,
         '--gradient-hero': palette.gradientHero,
         '--gradient-primary': palette.gradientPrimary
-    } : {}, [palette]);
+    } : {};
 
     const LIST_OPTIONS = LIST_OPTIONS_BASE.map(o => ({ ...o, label: appSettings[o.labelKey] || o.fallback }));
     const descText = series.description || (appSettings.lang_no_synopsis || 'Bu seri için özet mevcut değil.');
     const isLongDesc = descText.length > 250;
 
-    const sortedChapters = useMemo(() =>
-        [...chapters].sort((a, b) => sortDesc ? b.chapter_number - a.chapter_number : a.chapter_number - b.chapter_number),
-    [chapters, sortDesc]);
-    const filteredChapters = useMemo(() => chapterSearch.trim()
+    const sortedChapters = [...chapters].sort((a, b) => sortDesc ? b.chapter_number - a.chapter_number : a.chapter_number - b.chapter_number);
+    const filteredChapters = chapterSearch.trim()
         ? sortedChapters.filter(ch => {
             const q = chapterSearch.toLowerCase();
             return String(ch.chapter_number).includes(q) || (ch.title || '').toLowerCase().includes(q);
         })
-        : sortedChapters,
-    [sortedChapters, chapterSearch]);
-
-    // Her chapter için pahalı hesaplamaları (tarih parse, isNew, chNum, hasTitle) tek seferinde memoize et
-    // Böylece render sırasında her satır için tekrar hesaplanmaz
-    const now = useMemo(() => Date.now(), []);
-    const processedChapters = useMemo(() => filteredChapters.map(ch => {
-        const raw = String(ch.created_at || '');
-        const normalized = raw.includes('T') ? (raw.endsWith('Z') ? raw : raw + 'Z') : raw.replace(' ', 'T') + 'Z';
-        const ts = new Date(normalized).getTime();
-        const dateStr = isNaN(ts) ? '' : new Date(normalized).toLocaleDateString('tr-TR', { month: 'short', day: 'numeric', year: 'numeric' });
-        const isNew = !isNaN(ts) && (now - ts) < 24 * 60 * 60 * 1000;
-        const chNum = Number(ch.chapter_number) % 1 === 0 ? Math.floor(ch.chapter_number) : ch.chapter_number;
-        const hasTitle = ch.title && !isDefaultTitle(ch.title, ch.chapter_number);
-        return { ...ch, _dateStr: dateStr, _isNew: isNew, _chNum: chNum, _hasTitle: hasTitle };
-    }), [filteredChapters, now]);
-
+        : sortedChapters;
     // visibleChapters: scroll modunda tüm bölümler gösterilir, expanded modunda da tümü
     const hasMore = false; // artık sayfalama yok — scroll veya expanded
 
@@ -512,19 +486,8 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
         );
     }
 
-    const fullpageBgEnabled = appSettings.sd_fullpage_bg === '1';
-    const fullpageBgBlur = appSettings.sd_fullpage_bg_blur ? parseInt(appSettings.sd_fullpage_bg_blur) : 28;
-    const fullpageBgOverlay = appSettings.sd_fullpage_bg_overlay ? parseFloat(appSettings.sd_fullpage_bg_overlay) : 0.72;
-
     return (
-        <div
-            className={`page-container fade-in sd-page ${designClass}${fullpageBgEnabled ? ' sd-has-fullpage-bg' : ''}${isAdult && !ageVerified ? ' adult-content-blur' : ''}`}
-            style={{
-                position: 'relative',
-                ...adaptiveStyles,
-                ...(fullpageBgEnabled ? { '--sd-bg-blur': `${fullpageBgBlur}px`, '--sd-bg-overlay-opacity': fullpageBgOverlay } : {})
-            }}
-        >
+        <div className={`page-container fade-in sd-page ${designClass}${isAdult && !ageVerified ? ' adult-content-blur' : ''}`} style={{ position: 'relative', ...adaptiveStyles }}>
             {/* ── Age Gate Modal — rendered via Portal to escape blur filter context ── */}
             {mounted && isAdult && showAgeGate && !ageVerified && createPortal(
                 <div className="age-gate-backdrop">
@@ -585,23 +548,6 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                         </div>
                     </div>
                 </div>,
-                document.body
-            )}
-
-            {/* ── Tam Sayfa Sabit Arka Plan (sd_fullpage_bg ayarı aktifse) ── */}
-            {fullpageBgEnabled && series.cover_url && mounted && createPortal(
-                <>
-                    <div className="sd-fullpage-bg-layer">
-                        <div
-                            className="sd-fullpage-bg-layer-inner"
-                            style={{
-                                backgroundImage: `url(${series.cover_url})`,
-                                filter: `blur(${fullpageBgBlur}px)`,
-                            }}
-                        />
-                    </div>
-                    <div className="sd-fullpage-bg-overlay" style={{ background: `rgba(0,0,0,${fullpageBgOverlay})` }} />
-                </>,
                 document.body
             )}
 
@@ -696,6 +642,131 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                         </div>
 
                                                                                                 {/* Big Stats */}
+                        <style>{`
+                            .neo-stats-card {
+                                background: linear-gradient(145deg, rgba(20, 25, 40, 0.8) 0%, rgba(10, 12, 20, 0.95) 100%);
+                                border: 1px solid rgba(255,255,255,0.08);
+                                border-radius: 12px;
+                                padding: 12px 16px;
+                                margin: 16px 0;
+                                display: flex;
+                                flex-wrap: wrap;
+                                gap: 12px;
+                                align-items: center;
+                                justify-content: space-between;
+                            }
+                            .neo-rating-block {
+                                display: flex;
+                                align-items: center;
+                                gap: 12px;
+                            }
+                            .neo-rating-score {
+                                font-size: 2rem;
+                                font-weight: 900;
+                                color: #fff;
+                                line-height: 1;
+                                text-shadow: 0 0 10px rgba(139, 92, 246, 0.6);
+                            }
+                            .neo-rating-info {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 2px;
+                            }
+                            .neo-stars-display {
+                                display: flex;
+                                gap: 2px;
+                                color: #f59e0b;
+                            }
+                            .neo-stars-display svg { width: 12px; height: 12px; }
+                            .neo-votes-text {
+                                font-size: 0.65rem;
+                                color: var(--text-muted);
+                                font-weight: 600;
+                                text-transform: uppercase;
+                            }
+                            .neo-metrics-block {
+                                display: flex;
+                                gap: 12px;
+                            }
+                            .neo-metric {
+                                display: flex;
+                                align-items: center;
+                                gap: 6px;
+                                background: rgba(255,255,255,0.03);
+                                border: 1px solid rgba(255,255,255,0.05);
+                                padding: 6px 10px;
+                                border-radius: 8px;
+                            }
+                            .neo-metric-icon {
+                                display: flex;
+                                align-items: center;
+                            }
+                            .neo-metric-icon svg { width: 14px; height: 14px; }
+                            .neo-metric-icon.chapters { color: #8b5cf6; }
+                            .neo-metric-icon.views { color: #34d399; }
+                            
+                            .neo-metric-val {
+                                font-size: 0.9rem;
+                                font-weight: 800;
+                                color: #fff;
+                            }
+                            .neo-metric-lbl {
+                                font-size: 0.6rem;
+                                color: var(--text-muted);
+                                text-transform: uppercase;
+                                margin-left: 4px;
+                            }
+                            .neo-interactive-rating {
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                padding: 8px 12px;
+                                background: rgba(0,0,0,0.3);
+                                border-radius: 8px;
+                                border: 1px dashed rgba(255,255,255,0.1);
+                            }
+                            .neo-ir-title {
+                                font-size: 0.7rem;
+                                font-weight: 700;
+                                color: var(--text-primary);
+                            }
+                            .neo-ir-stars {
+                                display: flex;
+                                gap: 2px;
+                            }
+                            .neo-ir-star-btn {
+                                background: none; border: none; padding: 0; cursor: pointer;
+                                transition: transform 0.2s;
+                                opacity: 0.6;
+                            }
+                            .neo-ir-star-btn.active {
+                                opacity: 1;
+                                filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.6));
+                                transform: scale(1.1);
+                            }
+                            .neo-ir-star-btn svg { width: 16px; height: 16px; }
+                            
+                            @media (max-width: 650px) {
+                                .neo-stats-card {
+                                    flex-direction: column;
+                                    align-items: stretch;
+                                    padding: 12px;
+                                    gap: 12px;
+                                }
+                                .neo-metrics-block {
+                                    justify-content: space-between;
+                                }
+                                .neo-metric { flex: 1; justify-content: center; }
+                                .neo-interactive-rating {
+                                    justify-content: space-between;
+                                    flex-wrap: wrap;
+                                }
+                            }
+                            @media (max-width: 400px) {
+                                .neo-ir-stars { flex-wrap: wrap; justify-content: center; width: 100%; margin-top: 4px; }
+                                .neo-ir-star-btn svg { width: 18px; height: 18px; }
+                            }
+                        `}</style>
 
                         <div className="neo-stats-card" id="rating-section">
                             {/* 1. The Rating Block */}
@@ -706,7 +777,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                                 <div className="neo-rating-info">
                                     <div className="neo-stars-display">
                                         {[1,2,3,4,5].map(v => (
-                                            <svg key={v} viewBox="0 0 24 24" fill={v <= Math.round(avgRating || series.rating || 0) ? "currentColor" : "rgba(255,255,255,0.1)"} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                            <svg key={v} viewBox="0 0 24 24" fill={v <= Math.round((avgRating || series.rating || 0) / 2) ? "currentColor" : "rgba(255,255,255,0.1)"} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                                         ))}
                                     </div>
                                     <div className="neo-votes-text">{ratingVoteCount} İnceleme</div>
@@ -714,64 +785,52 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                             </div>
 
                             {/* 2. The Metrics Block */}
-                            {(() => {
-                                // Toplam okunma: tüm bölümlerin read_count değerlerinin toplamı
-                                const totalReads = chapters.reduce((sum, ch) => sum + (Number(ch.read_count) || 0), 0);
-                                return (
-                                    <div className="neo-metrics-block">
-                                        <div className="neo-metric">
-                                            <div className="neo-metric-icon chapters">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
-                                            </div>
-                                            <div>
-                                                <span className="neo-metric-val">{chapters.length}</span>
-                                                <span className="neo-metric-lbl">Bölüm</span>
-                                            </div>
-                                        </div>
-                                        <div className="neo-metric">
-                                            <div className="neo-metric-icon views">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                            </div>
-                                            <div>
-                                                <span className="neo-metric-val">{fmtNum(totalReads)}</span>
-                                                <span className="neo-metric-lbl">Okunma</span>
-                                            </div>
-                                        </div>
+                            <div className="neo-metrics-block">
+                                <div className="neo-metric">
+                                    <div className="neo-metric-icon chapters">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
                                     </div>
-                                );
-                            })()}
+                                    <div>
+                                        <span className="neo-metric-val">{chapters.length}</span>
+                                        <span className="neo-metric-lbl">Bölüm</span>
+                                    </div>
+                                </div>
+                                <div className="neo-metric">
+                                    <div className="neo-metric-icon views">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    </div>
+                                    <div>
+                                        <span className="neo-metric-val">{fmtNum(series.views)}</span>
+                                        <span className="neo-metric-lbl">Okunma</span>
+                                    </div>
+                                </div>
+                            </div>
 
-                            {/* 3. The Interactive Rating Component — 5 yıldız (1-5 skala) */}
+                            {/* 3. The Interactive Rating Component */}
                             <div className="neo-interactive-rating" onMouseLeave={() => setHoverRating(null)}>
                                 <div className="neo-ir-title">
-                                    {user ? (userRating ? `Puanın: ${userRating}/5` : (appSettings.lang_rate_series || 'Puanla')) : (appSettings.lang_rate_series || 'Giriş Yap')}
+                                    {user ? (userRating ? `Senin Puanın: ${userRating}/10` : (appSettings.lang_rate_series || 'Puanla')) : (appSettings.lang_rate_series || 'Giriş Yap')}
                                 </div>
                                 <div className="neo-ir-stars">
-                                    {[1,2,3,4,5].map(v => {
-                                        // v = 1-5 yıldız; DB'de 1-5 olarak saklanır
-                                        const ratingVal = v;
-                                        const activeThreshold = hoverRating !== null ? hoverRating : (userRating || 0);
-                                        const isActive = v <= activeThreshold;
-                                        return (
-                                            <button
-                                                key={v}
-                                                className={`neo-ir-star-btn ${isActive ? 'active' : ''}`}
-                                                onClick={() => submitRating(ratingVal)}
-                                                onMouseEnter={() => setHoverRating(v)}
-                                                title={`${v}/5`}
-                                                disabled={ratingLoading}
-                                            >
-                                                <svg viewBox="0 0 24 24" fill={isActive ? '#f59e0b' : 'rgba(255,255,255,0.2)'} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                                            </button>
-                                        );
-                                    })}
+                                    {[1,2,3,4,5,6,7,8,9,10].map(v => (
+                                        <button
+                                            key={v}
+                                            className={`neo-ir-star-btn ${(hoverRating || userRating || 0) >= v ? 'active' : ''}`}
+                                            onClick={() => submitRating(v)}
+                                            onMouseEnter={() => setHoverRating(v)}
+                                            title={`${v}/10`}
+                                            disabled={ratingLoading}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill={(hoverRating || userRating || 0) >= v ? '#f59e0b' : 'rgba(255,255,255,0.2)'} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                        </button>
+                                    ))}
                                 </div>
-                                {ratingMsg && <div style={{fontSize:'0.7rem', color:'#34d399', fontWeight:600}}>{ratingMsg}</div>}
+                                {ratingMsg && <div style={{fontSize:'0.65rem', color:'#34d399'}}>{ratingMsg}</div>}
                             </div>
                         </div>
 
                         {/* Meta details */}
-                        <div className="sd-meta-grid" style={{ padding: 0, background: 'transparent', border: 'none', boxShadow: 'none' }}>
+                        <div className="sd-meta-grid glass-panel" style={{ padding: '16px', borderRadius: '12px' }}>
                             <div className="sd-meta-row">
                                 <span className="sd-meta-key">{capitalizeFirst(appSettings.lang_status || 'Durum')}</span>
                                 <span className="sd-meta-val">
@@ -811,6 +870,44 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                         {/* Genres */}
                         {genres.length > 0 && (
                             <>
+                                <style>{`
+                                    .sd-genres-new {
+                                        display: flex;
+                                        flex-wrap: wrap;
+                                        gap: 6px;
+                                        margin-bottom: 16px;
+                                    }
+                                    .sd-genre-tag-new {
+                                        display: inline-flex;
+                                        align-items: center;
+                                        padding: 3px 10px;
+                                        border-radius: 12px;
+                                        background: rgba(139, 92, 246, 0.06);
+                                        border: 1px solid rgba(139, 92, 246, 0.15);
+                                        font-size: 0.65rem;
+                                        color: var(--text-primary);
+                                        font-weight: 600;
+                                        cursor: pointer;
+                                        white-space: nowrap;
+                                    }
+                                    .sd-genre-tag-new span {
+                                        color: #8b5cf6;
+                                        margin-right: 3px;
+                                        font-weight: 800;
+                                        opacity: 0.8;
+                                    }
+                                    @media (max-width: 768px) {
+                                        .sd-genres-new {
+                                            gap: 4px;
+                                            margin-bottom: 12px;
+                                        }
+                                        .sd-genre-tag-new {
+                                            padding: 2px 8px;
+                                            font-size: 0.6rem;
+                                            border-radius: 8px;
+                                        }
+                                    }
+                                `}</style>
                                 <div className="sd-genres-new">
                                     {genres.map((g, i) => (
                                         <span key={i} className="sd-genre-tag-new"><span>#</span>{GENRE_TR[g] || g}</span>
@@ -900,7 +997,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                         {appSettings.lang_no_chapters || 'Henüz bölüm yok. Yakında tekrar kontrol edin!'}
                     </div>
-                ) : processedChapters.length === 0 ? (
+                ) : filteredChapters.length === 0 ? (
                     <div className="sd-empty-chapters">{appSettings.lang_no_chapters_match || 'Aramanızla eşleşen bölüm bulunamadı.'}</div>
                 ) : (
                     <>
@@ -910,11 +1007,23 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                             style={!showAllChapters ? { maxHeight: `${CHAPTERS_SCROLL_HEIGHT}px`, overflowY: 'auto' } : {}}
                         >
                             <div className="sd-chapter-list">
-                                {processedChapters.map(ch => {
+                                {filteredChapters.map(ch => {
                                     const showThumb = appSettings.chapter_thumbnails_enabled === '1';
                                     const thumbSrc = ch.thumbnail_url || null;
-                                    // Precomputed değerleri kullan — render sırasında tekrar hesaplamak yok
-                                    const { _dateStr: dateStr, _isNew: isNew, _chNum: chNum, _hasTitle: hasTitle } = ch;
+                                    const dateStr = (() => {
+                                        const raw = String(ch.created_at || '');
+                                        const normalized = raw.includes('T') ? (raw.endsWith('Z') ? raw : raw + 'Z') : raw.replace(' ', 'T') + 'Z';
+                                        return new Date(normalized).toLocaleDateString('tr-TR', { month: 'short', day: 'numeric', year: 'numeric' });
+                                    })();
+                                    const chNum = Number(ch.chapter_number) % 1 === 0 ? Math.floor(ch.chapter_number) : ch.chapter_number;
+                                    const hasTitle = ch.title && !isDefaultTitle(ch.title, ch.chapter_number);
+                                    const isNew = (() => {
+                                        if (!ch.created_at) return false;
+                                        const raw = String(ch.created_at);
+                                        const normalized = raw.includes('T') ? (raw.endsWith('Z') ? raw : raw + 'Z') : raw.replace(' ', 'T') + 'Z';
+                                        const ts = new Date(normalized).getTime();
+                                        return !isNaN(ts) && (Date.now() - ts) < 24 * 60 * 60 * 1000;
+                                    })();
                                     return (
                                         <Link
                                             key={ch.id}
@@ -945,12 +1054,6 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                                                             {fmtNum(ch.read_count)}
                                                         </span>
                                                     )}
-                                                    {ch.comment_count > 0 && (
-                                                        <span className="sd-chapter-row-reads" style={{ color: 'var(--text-muted)' }}>
-                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                                                            {fmtNum(ch.comment_count)}
-                                                        </span>
-                                                    )}
                                                     <span className="sd-chapter-row-date">{dateStr}</span>
                                                 </div>
                                             </div>
@@ -976,7 +1079,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                                 ) : (
                                     <>
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-                                        {appSettings.lang_show_all || 'Tümünü Göster'} ({processedChapters.length} bölüm)
+                                        {appSettings.lang_show_all || 'Tümünü Göster'} ({filteredChapters.length} bölüm)
                                     </>
                                 )}
                             </button>
@@ -985,29 +1088,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                 )}
             </div>
 
-            {/* ── Comments ── */}
-            <div style={{ marginTop: 40, borderTop: '1px solid var(--border)', paddingTop: 32 }}>
-                <CommentSection seriesId={series?.id} />
-            </div>
-
-            {/* ── You May Also Like ── */}
-            {relatedSeries.length > 0 && (
-                <div style={{ marginTop: 40 }}>
-                    <div className="section-header">
-                        <h2 className="section-title">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
-                                {appSettings.lang_you_may_also_like || 'Bunları da Beğenebilirsiniz'}
-                            </h2>
-                            <Link href="/series" className="section-link">{appSettings.lang_view_all || 'Tümünü Gör'} →</Link>
-                    </div>
-                    <div className="series-grid">
-                        {relatedSeries.map(s => <SeriesCard key={s.id} series={s} />)}
-                    </div>
-                </div>
-            )}
-
-            {/* ── SEO Etiketler — en altta ── */}
-            <div className="sd-seo-tags-section glass-panel" style={{ marginTop: 40 }}>
+            <div className="sd-seo-tags-section glass-panel">
                 <div className="section-header" style={{ marginBottom: 16 }}>
                     <h2 className="section-title">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -1052,6 +1133,27 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                     ))}
                 </div>
             </div>
+
+            {/* ── Comments ── */}
+            <div style={{ marginTop: 40, borderTop: '1px solid var(--border)', paddingTop: 32 }}>
+                <CommentSection seriesId={series?.id} />
+            </div>
+
+            {/* ── You May Also Like ── */}
+            {relatedSeries.length > 0 && (
+                <div style={{ marginTop: 40 }}>
+                    <div className="section-header">
+                        <h2 className="section-title">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+                                {appSettings.lang_you_may_also_like || 'Bunları da Beğenebilirsiniz'}
+                            </h2>
+                            <Link href="/series" className="section-link">{appSettings.lang_view_all || 'Tümünü Gör'} →</Link>
+                    </div>
+                    <div className="series-grid">
+                        {relatedSeries.map(s => <SeriesCard key={s.id} series={s} />)}
+                    </div>
+                </div>
+            )}
 
             {/* ── Cover Lightbox ── */}
             {mounted && coverLightboxOpen && createPortal(

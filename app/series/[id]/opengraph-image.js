@@ -29,15 +29,9 @@ export default async function Image({ params }) {
             description = series.description
                 ? series.description.slice(0, 120) + (series.description.length > 120 ? '…' : '')
                 : description;
-            if (series.cover_url) {
-                if (series.cover_url.startsWith('http')) {
-                    coverUrl = series.cover_url;
-                } else {
-                    // Göreceli yol — önde / yoksa ekle
-                    const rel = series.cover_url.startsWith('/') ? series.cover_url : `/${series.cover_url}`;
-                    coverUrl = `${BASE_URL}${rel}`;
-                }
-            }
+            coverUrl = series.cover_url
+                ? (series.cover_url.startsWith('http') ? series.cover_url : `${BASE_URL}${series.cover_url}`)
+                : null;
             genres = series.genres
                 ? (() => { try { return JSON.parse(series.genres).slice(0, 3); } catch { return series.genres.split(',').slice(0, 3).map(g => g.trim()); } })()
                 : [];

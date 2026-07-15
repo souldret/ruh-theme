@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useAuth } from './AuthProvider';
 
 const GENRE_TR = {
@@ -65,8 +64,9 @@ function AdultOverlay({ isAdult, user }) {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        /* backdrop-filter yerine koyu solid arka plan — daha performanslı */
-        background: 'rgba(0,0,0,0.75)',
+        background: 'rgba(0,0,0,0.65)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         textDecoration: 'none',
         color: '#fff',
         borderRadius: 'inherit',
@@ -106,14 +106,11 @@ function CascadeHero({ popularSeries, slideIndex, user, ...navProps }) {
       <div className="hs-cascade-active-area">
         {/* Kapak */}
         <div className="hscas-cover-wrap">
-          <Image
+          <img
             key={`cas-cover-${activeSeries.id}`}
             className="hscas-cover"
             src={activeSeries.cover_url || '/demo/cover1.jpg'}
             alt={activeSeries.title}
-            fill
-            priority
-            sizes="(max-width: 768px) 100vw, 400px"
             style={isAdultBlur ? { filter: 'blur(14px)', transform: 'scale(1.1)' } : {}}
           />
           {/* Puan rozeti */}
@@ -158,9 +155,7 @@ function CascadeHero({ popularSeries, slideIndex, user, ...navProps }) {
                 </svg>
                 {activeSeries.status === 'ongoing' ? 'Devam Ediyor' :
                  activeSeries.status === 'completed' ? 'Tamamlandı' :
-                 activeSeries.status === 'hiatus' ? 'Ara Verildi' :
-                 activeSeries.status === 'current' ? 'Güncel' :
-                 activeSeries.status === 'cancelled' ? 'İptal Edildi' : activeSeries.status}
+                 activeSeries.status === 'hiatus' ? 'Ara Verildi' : activeSeries.status}
               </span>
             )}
           </div>
@@ -208,18 +203,18 @@ function CascadeHero({ popularSeries, slideIndex, user, ...navProps }) {
         <div className="hs-cascade-steps">
           {len > 1 && s1 && (
             <Link href={`/series/${s1.slug || s1.id}`} className="hscas-step-card hscas-step-1">
-              <Image src={s1.cover_url || '/demo/cover1.jpg'} alt={s1.title} fill loading="lazy" sizes="100px" />
+              <img src={s1.cover_url || '/demo/cover1.jpg'} alt={s1.title} loading="lazy" />
               <div className="hscas-step-title">{s1.title}</div>
             </Link>
           )}
           {len > 2 && s2 && (
             <Link href={`/series/${s2.slug || s2.id}`} className="hscas-step-card hscas-step-2">
-              <Image src={s2.cover_url || '/demo/cover1.jpg'} alt={s2.title} fill loading="lazy" sizes="80px" />
+              <img src={s2.cover_url || '/demo/cover1.jpg'} alt={s2.title} loading="lazy" />
             </Link>
           )}
           {len > 3 && s3 && (
             <Link href={`/series/${s3.slug || s3.id}`} className="hscas-step-card hscas-step-3">
-              <Image src={s3.cover_url || '/demo/cover1.jpg'} alt={s3.title} fill loading="lazy" sizes="60px" />
+              <img src={s3.cover_url || '/demo/cover1.jpg'} alt={s3.title} loading="lazy" />
             </Link>
           )}
         </div>

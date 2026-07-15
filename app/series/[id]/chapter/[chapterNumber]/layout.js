@@ -20,17 +20,10 @@ export async function generateMetadata({ params }) {
         const slug = series.slug || series.id;
         const chNum = chapter?.chapter_number ?? chapterNumber;
         const chTitle = chapter?.title ? ` — ${chapter.title}` : '';
-        const canonicalUrl = `${BASE_URL}/series/${slug}/chapter/${chNum}`;
+        const canonicalUrl = `${BASE_URL}/seri/${slug}/bolum/${chNum}`;
         const coverUrl = series.cover_url
-            ? (series.cover_url.startsWith('http')
-                ? series.cover_url
-                : `${BASE_URL}${series.cover_url.startsWith('/') ? '' : '/'}${series.cover_url}`)
+            ? (series.cover_url.startsWith('http') ? series.cover_url : `${BASE_URL}${series.cover_url}`)
             : `${BASE_URL}/icon-512.png`;
-
-        // Tam URL oluştur (og:image ve twitter:image için mutlak URL gerekli)
-        const absoluteCoverUrl = coverUrl.startsWith('http')
-            ? coverUrl
-            : `${BASE_URL}${coverUrl.startsWith('/') ? '' : '/'}${coverUrl}`;
 
         const settingsRows = db.prepare('SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ("site_name", "seo_title_chapter")').all();
         const settings = {};
@@ -68,20 +61,13 @@ export async function generateMetadata({ params }) {
                 siteName: siteName,
                 title: pageTitle,
                 description,
-                images: [
-                    {
-                        url: absoluteCoverUrl,
-                        width: 1200,
-                        height: 630,
-                        alt: `${series.title} kapak`,
-                    },
-                ],
+                images: [{ url: coverUrl, alt: `${series.title} kapak` }],
             },
             twitter: {
                 card: 'summary_large_image',
                 title: pageTitle,
                 description,
-                images: [absoluteCoverUrl],
+                images: [coverUrl],
             },
         };
     } catch {

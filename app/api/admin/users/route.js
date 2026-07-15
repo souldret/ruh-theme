@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getVerifiedUser, hasAdminPanelAccess, hasPermission } from '@/lib/auth';
+import { getVerifiedUser } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
 // GET: Kullanıcı listesi veya belirli bir kullanıcının detayı/aktiviteleri
@@ -11,12 +11,14 @@ export async function GET(request) {
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });
         const { user: adminUser } = result;
+        if (!['admin', 'manager'].includes(adminUser.role)) {
+            return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
+        }
 
         const { searchParams } = new URL(request.url);
         const userId = searchParams.get('userId');
         const action = searchParams.get('action');
 
-        // list-custom-roles: giriş yapmış tüm kullanıcılara açık (admin panel erişim kontrolü için gerekli)
         if (action === 'list-custom-roles') {
             try {
                 const row = db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_roles'").get();
@@ -25,11 +27,6 @@ export async function GET(request) {
             } catch {
                 return NextResponse.json({ success: true, roles: [] });
             }
-        }
-
-        // Diğer tüm işlemler admin panel erişimi gerektirir
-        if (!hasAdminPanelAccess(adminUser, db)) {
-            return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
         }
 
         if (userId && action === 'activity') {
@@ -78,7 +75,7 @@ export async function POST(request) {
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });
         const { user: adminUser } = result;
-        if (!hasAdminPanelAccess(adminUser, db)) {
+        if (!['admin', 'manager'].includes(adminUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
         }
 
@@ -131,23 +128,9 @@ export async function POST(request) {
         const targetUser = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(userId);
         if (!targetUser) return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 });
 
-        // Admin olmayan herkes (manager, custom roller dahil) admin kullanıcıları değiştiremez
-        if (adminUser.role !== 'admin' && targetUser.role === 'admin') {
+        // Manager, admin kullanıcıları değiştiremez
+        if (adminUser.role === 'manager' && targetUser.role === 'admin') {
             return NextResponse.json({ error: 'Admin kullanıcıları değiştiremezsiniz' }, { status: 403 });
-        }
-
-        // reset-password ve change-role: manage_users yetkisi gerekli
-        if (['reset-password', 'change-role', 'change-user-role'].includes(action)) {
-            if (adminUser.role !== 'admin' && adminUser.role !== 'manager' && !hasPermission(adminUser, 'manage_users', db)) {
-                return NextResponse.json({ error: 'Bu işlem için manage_users yetkisi gerekli' }, { status: 403 });
-            }
-        }
-
-        // ban: ban_users veya manage_users yetkisi gerekli
-        if (action === 'ban') {
-            if (adminUser.role !== 'admin' && adminUser.role !== 'manager' && !hasPermission(adminUser, 'ban_users', db) && !hasPermission(adminUser, 'manage_users', db)) {
-                return NextResponse.json({ error: 'Bu işlem için ban_users yetkisi gerekli' }, { status: 403 });
-            }
         }
 
         if (action === 'reset-password') {

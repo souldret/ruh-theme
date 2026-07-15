@@ -1,17 +1,15 @@
-﻿import { NextResponse } from 'next/server';
-import { requireAuth, hasAdminPanelAccess } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 
-// Watermark gÃ¶rseli yÃ¼kle
+// Watermark görseli yükle
 export async function POST(request) {
     try {
-        const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) throw new Error('Forbidden');
+        requireAdmin(request); // throws if not admin
     } catch {
-        return NextResponse.json({ error: 'Yetkisiz eriÅŸim' }, { status: 401 });
+        return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }
 
     try {
@@ -19,18 +17,18 @@ export async function POST(request) {
         const file = formData.get('watermark');
 
         if (!file || typeof file.arrayBuffer !== 'function') {
-            return NextResponse.json({ error: 'Watermark dosyasÄ± gerekli' }, { status: 400 });
+            return NextResponse.json({ error: 'Watermark dosyası gerekli' }, { status: 400 });
         }
 
         const allowedTypes = ['image/png', 'image/webp', 'image/jpeg', 'image/jpg'];
         if (!allowedTypes.includes(file.type)) {
-            return NextResponse.json({ error: 'Sadece PNG, WebP veya JPEG dosyalarÄ± kabul edilir (PNG/WebP ÅŸeffaflÄ±k iÃ§in Ã¶nerilir)' }, { status: 400 });
+            return NextResponse.json({ error: 'Sadece PNG, WebP veya JPEG dosyaları kabul edilir (PNG/WebP şeffaflık için önerilir)' }, { status: 400 });
         }
 
         const wmDir = path.join(process.cwd(), 'public', 'uploads', 'watermark');
         if (!fs.existsSync(wmDir)) fs.mkdirSync(wmDir, { recursive: true });
 
-        // Eski watermark dosyasÄ±nÄ± temizle
+        // Eski watermark dosyasını temizle
         const existing = fs.readdirSync(wmDir);
         for (const f of existing) {
             try { fs.unlinkSync(path.join(wmDir, f)); } catch {}
@@ -44,26 +42,24 @@ export async function POST(request) {
         const buffer = Buffer.from(await file.arrayBuffer());
         fs.writeFileSync(filePath, buffer);
 
-        // Watermark path'ini veritabanÄ±na kaydet
+        // Watermark path'ini veritabanına kaydet
         const db = getDb();
         db.prepare('INSERT OR REPLACE INTO app_settings (setting_key, setting_value) VALUES (?, ?)').run('watermark_path', publicPath);
         db.prepare('INSERT OR REPLACE INTO app_settings (setting_key, setting_value) VALUES (?, ?)').run('watermark_abs_path', filePath);
 
-        return NextResponse.json({ path: publicPath, message: 'Watermark baÅŸarÄ±yla yÃ¼klendi' });
+        return NextResponse.json({ path: publicPath, message: 'Watermark başarıyla yüklendi' });
     } catch (err) {
-        console.error('Watermark yÃ¼kleme hatasÄ±:', err);
-        return NextResponse.json({ error: 'Watermark yÃ¼klenemedi: ' + err.message }, { status: 500 });
+        console.error('Watermark yükleme hatası:', err);
+        return NextResponse.json({ error: 'Watermark yüklenemedi: ' + err.message }, { status: 500 });
     }
 }
 
 // Watermark sil
 export async function DELETE(request) {
     try {
-        const user = requireAuth(request);
-        const db2 = getDb();
-        if (!hasAdminPanelAccess(user, db2)) throw new Error('Forbidden');
+        requireAdmin(request);
     } catch {
-        return NextResponse.json({ error: 'Yetkisiz eriÅŸim' }, { status: 401 });
+        return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }
 
     try {

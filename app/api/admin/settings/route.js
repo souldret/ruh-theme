@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { requireAuth, hasAdminPanelAccess } from '@/lib/auth';
-import { invalidateSettingsCache } from '@/lib/settings-cache';
+import { requireAuth } from '@/lib/auth';
 
 export async function POST(request) {
     try {
         const user = requireAuth(request);
-        const body = await request.json();
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!user || !['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
+
+        const body = await request.json();
+        const db = getDb();
         const stmt = db.prepare('INSERT OR REPLACE INTO app_settings (setting_key, setting_value) VALUES (?, ?)');
 
         db.transaction((settingsObj) => {
@@ -24,9 +24,6 @@ export async function POST(request) {
                 user.id, user.username, 'update_settings', JSON.stringify(body).substring(0, 200)
             );
         } catch (e) { /* log hatası ana işlemi etkilemesin */ }
-
-        // Settings değiştiğinde cache'i anında temizle (favicon, logo vb. hemen yansısın)
-        invalidateSettingsCache();
 
         return NextResponse.json({ success: true });
     } catch (error) {

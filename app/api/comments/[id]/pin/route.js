@@ -1,21 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getUserFromRequest, hasPermission } from '@/lib/auth';
+import { getUserFromRequest } from '@/lib/auth';
 
 export async function PUT(request, { params }) {
     try {
         const user = getUserFromRequest(request);
-        if (!user) {
-            return NextResponse.json({ error: 'Bu işlem için yetkiniz yok.' }, { status: 403 });
-        }
-        const db = getDb();
-        const builtinCanPin = user.role === 'admin' || user.role === 'manager';
-        const customCanPin = hasPermission(user, 'manage_comments', db);
-        if (!builtinCanPin && !customCanPin) {
+        if (!user || (user.role !== 'admin' && user.role !== 'manager')) {
             return NextResponse.json({ error: 'Bu işlem için yetkiniz yok.' }, { status: 403 });
         }
 
         const { id } = await params;
+        const db = getDb();
 
         const comment = db.prepare('SELECT is_pinned FROM comments WHERE id = ?').get(id);
         if (!comment) {

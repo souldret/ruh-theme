@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { BADGE_OPTIONS } from '@/lib/badges';
-import { invalidateAppSettingsCache } from '@/lib/settingsCache';
 
 /* ── Icons ───────────────────────────────────────────────────── */
 const I = { w: 16, h: 16 };
@@ -295,23 +294,6 @@ export default function AdminPanelPage() {
     const [mediaSelectMode, setMediaSelectMode] = useState(false);
     const [mediaSelected, setMediaSelected] = useState(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
-    // Media folder browser (seri bazlı)
-    const [mediaView, setMediaView] = useState('flat'); // 'flat' | 'folders' | 'user-folders'
-    const [mediaFolders, setMediaFolders] = useState([]);
-    const [mediaFoldersLoading, setMediaFoldersLoading] = useState(false);
-    const [selectedMediaSeries, setSelectedMediaSeries] = useState(null); // { seriesId, title, coverUrl }
-    const [seriesChapterFolders, setSeriesChapterFolders] = useState(null); // { series, chapters }
-    const [seriesChaptersLoading, setSeriesChaptersLoading] = useState(false);
-    const [selectedMediaChapter, setSelectedMediaChapter] = useState(null); // { chapterId, ... }
-    const [chapterPages, setChapterPages] = useState(null); // { chapter, pages }
-    const [chapterPagesLoading, setChapterPagesLoading] = useState(false);
-    // Kullanıcı klasörleri
-    const [userFolders, setUserFolders] = useState([]);
-    const [userFoldersLoading, setUserFoldersLoading] = useState(false);
-    const [selectedUserFolder, setSelectedUserFolder] = useState(null); // { userId, username, ... }
-    const [userFolderDetail, setUserFolderDetail] = useState(null); // { user, files }
-    const [userFolderDetailLoading, setUserFolderDetailLoading] = useState(false);
-    const [userFolderSearch, setUserFolderSearch] = useState('');
 
     // Site asset upload (logo, favicon, og-image)
     const [assetUploading, setAssetUploading] = useState('');
@@ -608,76 +590,6 @@ export default function AdminPanelPage() {
         loadMedia(1, false, mediaFilter);
     }
 
-    // ── Seri Klasör Tarayıcısı Fonksiyonları ──
-    async function loadMediaFolders() {
-        setMediaFoldersLoading(true);
-        try {
-            const res = await authFetch('/api/admin?action=list-media-folders');
-            const data = await res.json();
-            setMediaFolders(data.folders || []);
-        } catch (err) { console.error(err); }
-        finally { setMediaFoldersLoading(false); }
-    }
-
-    async function openMediaSeriesFolder(folder) {
-        setSelectedMediaSeries(folder);
-        setSelectedMediaChapter(null);
-        setChapterPages(null);
-        setSeriesChaptersLoading(true);
-        try {
-            const res = await authFetch(`/api/admin?action=list-media-series-chapters&mediaSeriesId=${folder.seriesId}`);
-            const data = await res.json();
-            setSeriesChapterFolders(data);
-        } catch (err) { console.error(err); }
-        finally { setSeriesChaptersLoading(false); }
-    }
-
-    async function openMediaChapterFolder(chapter) {
-        setSelectedMediaChapter(chapter);
-        setChapterPagesLoading(true);
-        try {
-            const res = await authFetch(`/api/admin?action=list-media-chapter-pages&mediaChapterId=${chapter.chapterId}`);
-            const data = await res.json();
-            setChapterPages(data);
-        } catch (err) { console.error(err); }
-        finally { setChapterPagesLoading(false); }
-    }
-
-    function mediaFolderBreadcrumb() {
-        const items = [{ label: 'Seri Klasörleri', onClick: () => { setSelectedMediaSeries(null); setSelectedMediaChapter(null); setChapterPages(null); setSeriesChapterFolders(null); } }];
-        if (selectedMediaSeries) items.push({ label: selectedMediaSeries.title, onClick: () => { setSelectedMediaChapter(null); setChapterPages(null); openMediaSeriesFolder(selectedMediaSeries); } });
-        if (selectedMediaChapter) items.push({ label: `Bölüm ${selectedMediaChapter.chapterNumber}`, onClick: null });
-        return items;
-    }
-
-    // ── Kullanıcı Klasör Tarayıcısı Fonksiyonları ──
-    async function loadUserFolders() {
-        setUserFoldersLoading(true);
-        try {
-            const res = await authFetch('/api/admin?action=list-user-folders');
-            const data = await res.json();
-            setUserFolders(data.folders || []);
-        } catch (err) { console.error(err); }
-        finally { setUserFoldersLoading(false); }
-    }
-
-    async function openUserFolder(folder) {
-        setSelectedUserFolder(folder);
-        setUserFolderDetailLoading(true);
-        try {
-            const res = await authFetch(`/api/admin?action=list-user-folder-detail&mediaUserId=${folder.userId}`);
-            const data = await res.json();
-            setUserFolderDetail(data);
-        } catch (err) { console.error(err); }
-        finally { setUserFolderDetailLoading(false); }
-    }
-
-    function userFolderBreadcrumb() {
-        const items = [{ label: 'Kullanıcı Klasörleri', onClick: () => { setSelectedUserFolder(null); setUserFolderDetail(null); } }];
-        if (selectedUserFolder) items.push({ label: selectedUserFolder.username, onClick: null });
-        return items;
-    }
-
     async function handleSiteAssetUpload(e, assetType, urlKey) {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -749,7 +661,6 @@ export default function AdminPanelPage() {
     // Chapter add
     const [cNum, setCNum] = useState('');
     const [cTitle, setCTitle] = useState('');
-    const [cContent, setCContent] = useState('');
     const [cFiles, setCFiles] = useState(null);
     const [cThumbUrl, setCThumbUrl] = useState('');
     const [cThumbMode, setCThumbMode] = useState('none'); // 'none' | 'upload' | 'auto'
@@ -836,28 +747,24 @@ export default function AdminPanelPage() {
     const [scrapeNewPreview, setScrapeNewPreview] = useState(null);
 
     // View pages panel
-const [viewPagesChapterId, setViewPagesChapterId] = useState(null);
+    const [viewPagesChapterId, setViewPagesChapterId] = useState(null);
     const [viewPages, setViewPages] = useState([]);
     const [viewPagesLoading, setViewPagesLoading] = useState(false);
-    const [reorderMode, setReorderMode] = useState(false);
-    const [reorderSaving, setReorderSaving] = useState(false);
 
     async function openChapterPages(chapterId) {
-        if (viewPagesChapterId === chapterId) { setViewPagesChapterId(null); setViewPages([]); setReorderMode(false); return; }
+        if (viewPagesChapterId === chapterId) { setViewPagesChapterId(null); setViewPages([]); return; }
         setViewPagesChapterId(chapterId);
-        setReorderMode(false);
         setViewPagesLoading(true);
         try {
             const res = await fetch(`/api/chapters/${chapterId}`);
             const data = await res.json();
-            const sorted = (data.pages || []).slice().sort((a, b) => a.page_number - b.page_number);
-            setViewPages(sorted);
+            setViewPages(data.pages || []);
         } catch {}
         setViewPagesLoading(false);
     }
 
     async function deleteChapterPage(pageId) {
-        if (!window.confirm('Bu sayfayı silmek istediğinize emin misiniz?')) return;
+        if (!window.confirm('Bu sayfayu0131 silmek istediu011Finize emin misiniz?')) return;
         try {
             const fd = new FormData();
             fd.append('action', 'delete-page');
@@ -868,49 +775,6 @@ const [viewPagesChapterId, setViewPagesChapterId] = useState(null);
             setViewPages(prev => prev.filter(p => p.id !== pageId));
             show('Sayfa silindi');
         } catch (e) { show(e.message || 'Silinemedi', 'error'); }
-    }
-
-    function movePageUp(index) {
-        if (index === 0) return;
-        setViewPages(prev => {
-            const next = [...prev];
-            [next[index - 1], next[index]] = [next[index], next[index - 1]];
-            return next.map((p, i) => ({ ...p, page_number: i + 1 }));
-        });
-    }
-
-    function movePageDown(index) {
-        setViewPages(prev => {
-            if (index >= prev.length - 1) return prev;
-            const next = [...prev];
-            [next[index], next[index + 1]] = [next[index + 1], next[index]];
-            return next.map((p, i) => ({ ...p, page_number: i + 1 }));
-        });
-    }
-
-    function updatePageNumber(index, newNum) {
-        setViewPages(prev => {
-            const next = [...prev];
-            next[index] = { ...next[index], page_number: Number(newNum) };
-            return next;
-        });
-    }
-
-    async function savePageOrder() {
-        setReorderSaving(true);
-        try {
-            const fd = new FormData();
-            fd.append('action', 'reorder-pages');
-            fd.append('pages', JSON.stringify(viewPages.map(p => ({ id: p.id, page_number: p.page_number }))));
-            const res = await authFetch('/api/admin', { method: 'POST', body: fd });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.error || 'Sıralama kaydedilemedi');
-            // Re-sort locally after save
-            setViewPages(prev => [...prev].sort((a, b) => a.page_number - b.page_number));
-            setReorderMode(false);
-            show('Sayfa sıralaması kaydedildi');
-        } catch (e) { show(e.message || 'Kaydedilemedi', 'error'); }
-        setReorderSaving(false);
     }
 
     // API Key
@@ -934,7 +798,6 @@ const [viewPagesChapterId, setViewPagesChapterId] = useState(null);
         donation_goal_label: 'Sunucu Maliyeti',
         donation_goal_currency: '₺',
         donation_goal_pct: '0',
-        donation_goal_deadline: '',
         maintenance_mode: '0', 
         maintenance_message: '',
         maintenance_mode_design: 'default',
@@ -982,7 +845,6 @@ bug_report_enabled: '0',
         og_image_url: '',
         google_analytics_id: '',
         google_tag_manager_id: '',
-        google_site_verification: '',
         custom_css: '',
         custom_head_scripts: '',
         custom_body_js: '',
@@ -1033,12 +895,6 @@ bug_report_enabled: '0',
     const [trafficData, setTrafficData] = useState(null);
     const [trafficLoading, setTrafficLoading] = useState(false);
     const [trafficRange, setTrafficRange] = useState('7');
-
-    // Google Indexing API State
-    const [gIndexingKey, setGIndexingKey] = useState({ exists: false, clientEmail: null, projectId: null });
-    const [gIndexingLoading, setGIndexingLoading] = useState(false);
-    const [gIndexingTestUrl, setGIndexingTestUrl] = useState('');
-    const [gIndexingTestResult, setGIndexingTestResult] = useState(null);
 
     // Genre Management State
     const [genres, setGenres] = useState([]);
@@ -1408,15 +1264,6 @@ bug_report_enabled: '0',
         loadMenuSettings();
     }, [tab, token]);
 
-    // Load Google Indexing key status when switching to customize tab
-    useEffect(() => {
-        if (tab !== 'customize' || !token) return;
-        authFetch('/api/admin/google-indexing')
-            .then(r => r.json())
-            .then(d => setGIndexingKey(d))
-            .catch(() => {});
-    }, [tab, token]);
-
     async function loadCustomPages() {
         setPagesLoading(true);
         try {
@@ -1582,7 +1429,6 @@ donation_goal_enabled: sData.settings.donation_goal_enabled || '0',
                         donation_goal_label: sData.settings.donation_goal_label || 'Sunucu Maliyeti',
                         donation_goal_currency: sData.settings.donation_goal_currency || '₺',
                         donation_goal_pct: sData.settings.donation_goal_pct || '0',
-                         donation_goal_deadline: sData.settings.donation_goal_deadline || '',
 maintenance_mode: sData.settings.maintenance_mode || '0',
                        maintenance_message: sData.settings.maintenance_message || '',
                        maintenance_mode_design: sData.settings.maintenance_mode_design || 'default',
@@ -1631,9 +1477,8 @@ auth_subtitle_login: sData.settings.auth_subtitle_login || 'Okumaya devam etmek 
                      youtube_url: sData.settings.youtube_url || '',
                      facebook_url: sData.settings.facebook_url || '',
 og_image_url: sData.settings.og_image_url || '',
-google_analytics_id: sData.settings.google_analytics_id || '',
-                       google_tag_manager_id: sData.settings.google_tag_manager_id || '',
-                       google_site_verification: sData.settings.google_site_verification || '',
+                      google_analytics_id: sData.settings.google_analytics_id || '',
+                      google_tag_manager_id: sData.settings.google_tag_manager_id || '',
                       custom_css: sData.settings.custom_css || '',
                      custom_head_scripts: sData.settings.custom_head_scripts || '',
                      custom_body_js: sData.settings.custom_body_js || '',
@@ -1645,30 +1490,9 @@ google_analytics_id: sData.settings.google_analytics_id || '',
                      most_read_design: sData.settings.most_read_design || 'mr_style1',
                      trending_design: sData.settings.trending_design || 'trend_style1',
                      hero_slider_design: sData.settings.hero_slider_design || 'hero_style1',
-series_detail_design: sData.settings.series_detail_design || 'detail_style1',
-                      sd_fullpage_bg: sData.settings.sd_fullpage_bg || '0',
-                      sd_fullpage_bg_blur: sData.settings.sd_fullpage_bg_blur || '28',
-                      sd_fullpage_bg_overlay: sData.settings.sd_fullpage_bg_overlay || '0.72',
-                      comment_design: sData.settings.comment_design || 'comment_style1',
-                      page_bg_home_color: sData.settings.page_bg_home_color || '',
-                      page_bg_home_image: sData.settings.page_bg_home_image || '',
-                      page_bg_home_blur: sData.settings.page_bg_home_blur || '0',
-                      page_bg_archive_color: sData.settings.page_bg_archive_color || '',
-                      page_bg_archive_image: sData.settings.page_bg_archive_image || '',
-                      page_bg_archive_blur: sData.settings.page_bg_archive_blur || '0',
-                      page_bg_requests_color: sData.settings.page_bg_requests_color || '',
-                      page_bg_requests_image: sData.settings.page_bg_requests_image || '',
-                      page_bg_requests_blur: sData.settings.page_bg_requests_blur || '0',
-                      page_bg_profile_color: sData.settings.page_bg_profile_color || '',
-                      page_bg_profile_image: sData.settings.page_bg_profile_image || '',
-                      page_bg_profile_blur: sData.settings.page_bg_profile_blur || '0',
-                      page_bg_ranking_color: sData.settings.page_bg_ranking_color || '',
-                      page_bg_ranking_image: sData.settings.page_bg_ranking_image || '',
-                      page_bg_ranking_blur: sData.settings.page_bg_ranking_blur || '0',
-                      page_bg_global_color: sData.settings.page_bg_global_color || '',
-                      page_bg_global_image: sData.settings.page_bg_global_image || '',
-                      page_bg_global_blur: sData.settings.page_bg_global_blur || '0',
-                      latest_updates_title_color: sData.settings.latest_updates_title_color || '',
+                     series_detail_design: sData.settings.series_detail_design || 'detail_style1',
+                     comment_design: sData.settings.comment_design || 'comment_style1',
+                     latest_updates_title_color: sData.settings.latest_updates_title_color || '',
                      latest_updates_card_bg: sData.settings.latest_updates_card_bg || '',
                      latest_updates_card_border: sData.settings.latest_updates_card_border || '',
                      latest_updates_badge_bg: sData.settings.latest_updates_badge_bg || '',
@@ -1840,9 +1664,6 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
             });
             const data = await res.json();
             if (data.success) {
-                // Ayarlar kaydedildi — SeriesDetailClient ve diğer bileşenlerin
-                // eski cache'ini hemen temizle, yeni ayarlar anında yansısın
-                invalidateAppSettingsCache();
                 show('Özelleştirme ayarları kaydedildi!');
             } else {
                 show(data.error || 'Kaydedilemedi', 'error');
@@ -1852,38 +1673,6 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
         } finally {
             setCustomizeSubmitting(false);
         }
-    }
-
-    // Sayfa arka plan görseli yükle
-    async function handlePageBgImageUpload(pageKey, file) {
-        if (!file) return;
-        const fd = new FormData();
-        fd.append('image', file);
-        try {
-            const res = await authFetch(`/api/admin/page-bg-image?page=${pageKey}`, { method: 'POST', body: fd });
-            const data = await res.json();
-            if (res.ok && data.path) {
-                setCustomize(prev => ({ ...prev, [`page_bg_${pageKey}_image`]: data.path }));
-                invalidateAppSettingsCache();
-                show(`${pageKey} arka plan görseli yüklendi!`);
-            } else {
-                show(data.error || 'Yükleme başarısız', 'error');
-            }
-        } catch { show('Sunucu hatası', 'error'); }
-    }
-
-    async function handlePageBgImageDelete(pageKey) {
-        try {
-            const res = await authFetch(`/api/admin/page-bg-image?page=${pageKey}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (res.ok) {
-                setCustomize(prev => ({ ...prev, [`page_bg_${pageKey}_image`]: '' }));
-                invalidateAppSettingsCache();
-                show(`${pageKey} arka plan görseli silindi.`);
-            } else {
-                show(data.error || 'Silinemedi', 'error');
-            }
-        } catch { show('Sunucu hatası', 'error'); }
     }
 
     async function handleWatermarkUpload() {
@@ -2232,9 +2021,6 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
     }
 
     const [selectedChapters, setSelectedChapters] = useState([]);
-    const [selectedSeriesIds, setSelectedSeriesIds] = useState([]);
-    const [bulkSeriesCoverFile, setBulkSeriesCoverFile] = useState(null);
-    const [showBulkSeriesActions, setShowBulkSeriesActions] = useState(false);
 
     async function handleBulkUpload(e) {
         e.preventDefault();
@@ -2340,22 +2126,12 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
         try {
             let resolvedThumb = cThumbMode === 'auto' ? (detailSeries?.cover_url || null) : null;
             if (cThumbMode === 'upload' && cThumbFile) resolvedThumb = await uploadThumbFile(cThumbFile);
-            // datetime-local yerel saat verir; UTC'ye çevirip saklıyoruz
-            let publishAtUtc = null;
-            if (cPublishAt) {
-                const localDate = new Date(cPublishAt);
-                if (!isNaN(localDate.getTime())) {
-                    // SQLite'ın beklediği format: "YYYY-MM-DD HH:MM:SS"
-                    publishAtUtc = localDate.toISOString().replace('T', ' ').slice(0, 19);
-                }
-            }
-            const r1 = await doAction('add-chapter', { seriesId: detailSeries.id, chapterNumber: cNum, title: cTitle || `Bölüm ${cNum}`, content: cContent, publishAt: publishAtUtc, thumbnailUrl: resolvedThumb });
+            const r1 = await doAction('add-chapter', { seriesId: detailSeries.id, chapterNumber: cNum, title: cTitle || `Bölüm ${cNum}`, content: cContent, publishAt: cPublishAt || null, thumbnailUrl: resolvedThumb });
             const newChapId = r1.chapterId;
 
             // Upload images if any were selected
             if (cFiles && cFiles.length > 0 && newChapId && detailSeries?.type !== 'novel') {
                 const filesArr = Array.from(cFiles);
-                let uploadErrors = 0;
                 for (let k = 0; k < filesArr.length; k++) {
                     const isLastChunk = k === filesArr.length - 1;
                     const fd = new FormData();
@@ -2363,23 +2139,10 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                     fd.append('chapterId', newChapId);
                     fd.append('isLastChunk', isLastChunk ? '1' : '0');
                     fd.append('pages', filesArr[k]);
-                    try {
-                        const r = await fetch('/api/admin', { method: 'POST', body: fd, headers: authHeaders() });
-                        if (!r.ok) {
-                            let errMsg = `Sayfa ${k + 1} yüklenemedi`;
-                            try { const d = await r.json(); errMsg = d.error || errMsg; } catch {}
-                            throw new Error(errMsg);
-                        }
-                    } catch (fetchErr) {
-                        uploadErrors++;
-                        if (uploadErrors >= 3) throw new Error(`Yükleme başarısız: ${fetchErr.message}. Dosya çok büyük olabilir veya sunucu yanıt vermiyor.`);
-                    }
+                    const r = await fetch('/api/admin', { method: 'POST', body: fd, headers: authHeaders() });
+                    if (!r.ok) { const d = await r.json(); throw new Error(d.error || `Sayfa ${k + 1} yüklenemedi`); }
                 }
-                if (uploadErrors > 0) {
-                    show(`Bölüm ${cNum} eklendi ama ${uploadErrors} sayfa yüklenemedi`, 'error');
-                } else {
-                    show(`Bölüm ${cNum} eklendi ve ${filesArr.length} sayfa yüklendi`);
-                }
+                show(`Bölüm ${cNum} eklendi ve ${filesArr.length} sayfa yüklendi`);
             } else {
                 show('Bölüm eklendi');
             }
@@ -2439,18 +2202,12 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                 fd.append('isLastChunk', isLastChunk ? '1' : '0');
                 for (const f of chunkFiles) fd.append('pages', f);
                 
-                let r, d;
-                try {
-                    r = await fetch('/api/admin', { method: 'POST', body: fd, headers: authHeaders() });
-                    try { d = await r.json(); } catch { d = {}; }
-                } catch (netErr) {
-                    errors.push(`Ağ hatası: ${netErr.message || 'Sunucu yanıt vermedi'}. Dosya çok büyük (>50MB) olabilir.`);
-                    break;
-                }
+                const r = await fetch('/api/admin', { method: 'POST', body: fd, headers: authHeaders() });
+                const d = await r.json(); 
                 if (!r.ok) {
-                    errors.push(d?.error || `Parça ${Math.floor(k/chunkSize) + 1} yüklenemedi`);
+                    errors.push(d.error || `Parça ${Math.floor(k/chunkSize) + 1} yüklenemedi`);
                 } else {
-                    totalUploaded += (d?.uploaded ? d.uploaded.length : 0);
+                    totalUploaded += (d.uploaded ? d.uploaded.length : 0);
                 }
             }
             if (errors.length > 0) {
@@ -2630,36 +2387,9 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
     }
 
     if (authLoading || loading) return <div className="page-loading"><div className="spinner" /></div>;
-    const builtinStaffRoles = ['admin', 'manager', 'moderator', 'team_member'];
-    const customRoleNames = customRoles.map(r => r.name);
-    const isCustomRole = !builtinStaffRoles.includes(user?.role) && customRoleNames.includes(user?.role);
-    const currentCustomRole = isCustomRole ? customRoles.find(r => r.name === user.role) : null;
-    const currentCustomPerms = currentCustomRole?.permissions || [];
-
-    if (!user || (!builtinStaffRoles.includes(user.role) && !isCustomRole)) return null;
+    if (!user || !['admin', 'manager', 'moderator', 'team_member'].includes(user.role)) return null;
 
     const allSeries = stats?.allSeries || [];
-
-    // Permission → tab mapping for custom roles
-    const PERM_TAB_MAP = {
-        overview:      () => true,
-        series:        () => currentCustomPerms.some(p => ['manage_series','delete_series','manage_chapters'].includes(p)),
-        scraper:       () => currentCustomPerms.some(p => ['manage_series','manage_chapters'].includes(p)),
-        media:         () => currentCustomPerms.includes('manage_media'),
-        'api-key':     () => currentCustomPerms.includes('manage_settings'),
-        users:         () => currentCustomPerms.some(p => ['manage_users','ban_users','view_users','assign_badges'].includes(p)),
-        comments:      () => currentCustomPerms.some(p => ['manage_comments','view_comments'].includes(p)),
-        requests:      () => currentCustomPerms.includes('manage_requests'),
-        'bug-reports': () => currentCustomPerms.includes('view_reports'),
-        'audit-log':   () => currentCustomPerms.includes('view_audit_log'),
-        pages:         () => currentCustomPerms.includes('manage_pages'),
-        backup:        () => currentCustomPerms.includes('manage_settings'),
-        ads:           () => currentCustomPerms.includes('manage_settings'),
-        settings:      () => currentCustomPerms.includes('manage_settings'),
-        customize:     () => currentCustomPerms.includes('manage_settings'),
-        traffic:       () => currentCustomPerms.includes('manage_settings'),
-        announcements: () => currentCustomPerms.includes('manage_settings'),
-    };
 
     return (
         <div className="admin-layout fade-in">
@@ -2670,7 +2400,6 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                     if (user.role === 'admin' || user.role === 'manager') return true;
                     if (user.role === 'moderator' && (n.id === 'comments' || n.id === 'overview')) return true;
                     if (user.role === 'team_member' && ['series', 'scraper', 'media', 'overview'].includes(n.id)) return true;
-                    if (isCustomRole) return (PERM_TAB_MAP[n.id] ? PERM_TAB_MAP[n.id]() : false);
                     return false;
                 }).map(n => (
                     <button key={n.id} className={`admin-nav-item ${tab === n.id ? 'active' : ''}`}
@@ -2829,101 +2558,40 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                 {/* ═══════════════ SERIES MANAGEMENT ═══════════════ */}
                 {tab === 'series' && !subView && (
                     <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                             <h2 style={{ fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <BookIcon /> Seriler ({allSeries.length})
+                                <BookIcon /> Series ({allSeries.length})
                             </h2>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                                {allSeries.length > 0 && (
-                                    <button className="btn btn-ghost btn-sm" onClick={() => {
-                                        if (selectedSeriesIds.length === allSeries.length) setSelectedSeriesIds([]);
-                                        else setSelectedSeriesIds(allSeries.map(s => s.id));
-                                    }}>
-                                        {selectedSeriesIds.length === allSeries.length ? 'Seçimi Kaldır' : 'Tümünü Seç'}
-                                    </button>
-                                )}
-                                <button className="btn btn-primary btn-sm" onClick={() => { resetForm(); setSubView('create'); }}>
-                                    <PlusIcon /> Yeni Seri
-                                </button>
-                            </div>
+                            <button className="btn btn-primary btn-sm" onClick={() => { resetForm(); setSubView('create'); }}>
+                                <PlusIcon /> New Series
+                            </button>
                         </div>
-                        {/* Toplu işlem araç çubuğu */}
-                        {selectedSeriesIds.length > 0 && (
-                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: 'rgba(94,114,228,0.1)', border: '1px solid rgba(94,114,228,0.3)', borderRadius: 10, marginBottom: 14 }}>
-                                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent)' }}>{selectedSeriesIds.length} seri seçildi</span>
-                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
-                                        <input type="file" accept="image/*" style={{ display: 'none' }}
-                                            onChange={async (e) => {
-                                                const file = e.target.files?.[0];
-                                                if (!file) return;
-                                                try {
-                                                    show('Kapak görselleri güncelleniyor...', 'info');
-                                                    const fd = new FormData();
-                                                    fd.append('cover', file);
-                                                    fd.append('seriesIds', JSON.stringify(selectedSeriesIds));
-                                                    const res = await authFetch('/api/admin?action=bulk-update-cover', { method: 'POST', body: fd });
-                                                    const data = await res.json();
-                                                    show(data.message || 'Kapak görselleri güncellendi!', res.ok ? 'success' : 'error');
-                                                    if (res.ok) { setSelectedSeriesIds([]); loadStats(); }
-                                                } catch { show('Bir hata oluştu', 'error'); }
-                                                e.target.value = '';
-                                            }}
-                                        />
-                                        <span className="btn btn-ghost btn-sm"><ImageIcon /> Toplu Kapak Ayarla</span>
-                                    </label>
-                                    <button className="btn btn-danger btn-sm" onClick={() => setConfirmModal({
-                                        action: 'bulk-delete-series',
-                                        body: { seriesIds: JSON.stringify(selectedSeriesIds) },
-                                        text: `Seçili ${selectedSeriesIds.length} seriyi silmek istediğinize emin misiniz? BU İŞLEM GERİ ALINAMAZ!`,
-                                        onDone: async () => { setSelectedSeriesIds([]); loadStats(); }
-                                    })}>
-                                        <TrashIcon /> Seçilenleri Sil ({selectedSeriesIds.length})
-                                    </button>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => setSelectedSeriesIds([])}>İptal</button>
-                                </div>
-                            </div>
-                        )}
                         {allSeries.length === 0 ? (
                             <div className="admin-card" style={{ textAlign: 'center', padding: '40px 20px' }}>
-                                <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>Henüz seri yok. İlk seriyi oluşturun!</p>
+                                <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>No series yet. Create your first manga series!</p>
                                 <button className="btn btn-primary" onClick={() => { resetForm(); setSubView('create'); }}>
-                                    <PlusIcon /> İlk Seriyi Oluştur
+                                    <PlusIcon /> Create First Series
                                 </button>
                             </div>
                         ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                                 {allSeries.map(s => (
-                                    <div key={s.id} className="admin-card"
-                                        style={{ cursor: 'pointer', transition: 'transform 0.15s', outline: selectedSeriesIds.includes(s.id) ? '2px solid var(--accent)' : 'none' }}
-                                        onClick={(e) => {
-                                            if (e.target.type === 'checkbox') return;
-                                            if (selectedSeriesIds.length > 0) {
-                                                setSelectedSeriesIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]);
-                                            } else {
-                                                openSeriesDetail(s.id);
-                                            }
-                                        }}
+                                    <div key={s.id} className="admin-card" style={{ cursor: 'pointer', transition: 'transform 0.15s' }}
+                                        onClick={() => openSeriesDetail(s.id)}
                                         onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                                         onMouseOut={e => e.currentTarget.style.transform = 'none'}>
                                         <div style={{ display: 'flex', gap: 12 }}>
-                                            <div style={{ position: 'relative', width: 60, height: 85, flexShrink: 0 }}>
-                                                <div style={{ width: 60, height: 85, borderRadius: 6, overflow: 'hidden', background: 'var(--bg-tertiary)' }}>
-                                                    <img src={s.cover_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='85'%3E%3Crect width='60' height='85' fill='%231a1a2e'/%3E%3Ctext x='30' y='45' text-anchor='middle' fill='%23555' font-size='22'%3E📖%3C/text%3E%3C/svg%3E"} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                </div>
-                                                <input type="checkbox" checked={selectedSeriesIds.includes(s.id)}
-                                                    onChange={(e) => { e.stopPropagation(); setSelectedSeriesIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id)); }}
-                                                    style={{ position: 'absolute', top: 4, left: 4, width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
-                                                />
+                                            <div style={{ width: 60, height: 85, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: 'var(--bg-tertiary)' }}>
+                                                <img src={s.cover_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='85'%3E%3Crect width='60' height='85' fill='%231a1a2e'/%3E%3Ctext x='30' y='45' text-anchor='middle' fill='%23555' font-size='22'%3E📖%3C/text%3E%3C/svg%3E"} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                             </div>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</h3>
                                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                                                    <span className={`admin-badge ${s.published ? 'admin-role' : 'user-role'}`}>{s.published ? 'Yayında' : 'Taslak'}</span>
+                                                    <span className={`admin-badge ${s.published ? 'admin-role' : 'user-role'}`}>{s.published ? 'Published' : 'Draft'}</span>
                                                     <span className="admin-badge user-role">{s.status}</span>
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                    {s.chapter_count || 0} bölüm · {(s.views || 0).toLocaleString()} görüntülenme · ★ {s.rating?.toFixed(1)}
+                                                    {s.chapter_count || 0} chapters · {(s.views || 0).toLocaleString()} views · ★ {s.rating?.toFixed(1)}
                                                 </div>
                                             </div>
                                         </div>
@@ -2991,13 +2659,11 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                                 <div style={{ display: 'flex', gap: 6 }}>
                                                     <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(true)}><EditIcon /> Edit</button>
                                                     <button className="btn btn-ghost btn-sm" onClick={() => window.open(`/seri/${detailSeries.slug || detailSeries.id}`, '_blank')}><EyeIcon /> View</button>
-                                                    {(!isCustomRole || currentCustomPerms.includes('delete_series')) && (
-                                                        <button className="btn btn-danger btn-sm" onClick={() => setConfirmModal({
-                                                            action: 'delete-series', body: { seriesId: detailSeries.id },
-                                                            text: `Delete "${detailSeries.title}" and all its chapters & pages?`,
-                                                            onDone: () => { setSubView(null); }
-                                                        })}><TrashIcon /></button>
-                                                    )}
+                                                    <button className="btn btn-danger btn-sm" onClick={() => setConfirmModal({
+                                                        action: 'delete-series', body: { seriesId: detailSeries.id },
+                                                        text: `Delete "${detailSeries.title}" and all its chapters & pages?`,
+                                                        onDone: () => { setSubView(null); }
+                                                    })}><TrashIcon /></button>
                                                 </div>
                                             </div>
                                             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: 8 }}>{detailSeries.description || 'No description'}</p>
@@ -3435,26 +3101,10 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                                                 <span className="admin-badge user-role">{ch.page_count || 0} sayfa</span>
                                                 {ch.translation_count > 0 && <span className="admin-badge admin-role">{ch.translation_count} dil</span>}
-                                                {ch.publish_at && (() => { const ps = String(ch.publish_at).trim(); const pd = new Date(ps.includes('T') ? ps : ps.replace(' ', 'T') + 'Z'); return !isNaN(pd.getTime()) && pd > new Date(); })() && (
-                                                    <button
-                                                        title="Zamanlamayı iptal et (hemen yayınla)"
-                                                        style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)', whiteSpace: 'nowrap', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                                                        onClick={async () => {
-                                                            if (!confirm(`Bölüm ${ch.chapter_number} zamanlaması iptal edilsin mi? Bölüm hemen yayınlanacak.`)) return;
-                                                            const fd = new FormData();
-                                                            fd.append('action', 'update-chapter');
-                                                            fd.append('chapterId', ch.id);
-                                                            fd.append('chapterNumber', ch.chapter_number);
-                                                            fd.append('title', ch.title || '');
-                                                            fd.append('publishAt', '');
-                                                            const res = await authFetch('/api/admin', { method: 'POST', body: fd });
-                                                            const data = await res.json();
-                                                            if (data.success) { show('Zamanlama iptal edildi, bölüm yayınlandı'); await openSeriesDetail(detailSeries.id); }
-                                                            else show(data.error || 'Hata', 'error');
-                                                        }}
-                                                    >
-                                                        <ClockIcon /> {(() => { const ps = String(ch.publish_at).trim(); return new Date(ps.includes('T') ? ps : ps.replace(' ', 'T') + 'Z').toLocaleString('tr-TR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); })()} ✕
-                                                    </button>
+                                                {ch.publish_at && new Date(ch.publish_at) > new Date() && (
+                                                    <span style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)', whiteSpace: 'nowrap' }}>
+                                                        ⏰ {new Date(ch.publish_at).toLocaleString('tr-TR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
                                                 )}
 
                                                 {editingChapterId === ch.id ? (
@@ -3510,7 +3160,7 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                                 )}
                                             </div>
                                         </div>
-{/* Inline pages thumbnail panel */}
+                                        {/* Inline pages thumbnail panel */}
                                         {viewPagesChapterId === ch.id && (
                                             <div style={{ marginTop: 8, padding: '12px', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
                                                 {viewPagesLoading ? (
@@ -3519,124 +3169,26 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                                     <p style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: '0.8rem', padding: 10 }}>Henüz sayfa yüklenmemiş.</p>
                                                 ) : (
                                                     <>
-                                                        {/* Toolbar */}
-                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
-                                                            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>{viewPages.length} sayfa — önizleme için tıklayın</p>
-                                                            <div style={{ display: 'flex', gap: 6 }}>
-                                                                {reorderMode ? (
-                                                                    <>
-                                                                        <button
-                                                                            className="btn btn-sm btn-primary"
-                                                                            onClick={savePageOrder}
-                                                                            disabled={reorderSaving}
-                                                                            style={{ fontSize: '0.72rem', padding: '4px 10px' }}
-                                                                        >
-                                                                            {reorderSaving ? '...' : (
-                                                                                <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg> Kaydet</>
-                                                                            )}
-                                                                        </button>
-                                                                        <button
-                                                                            className="btn btn-sm btn-ghost"
-                                                                            onClick={async () => {
-                                                                                // Reload original order from server
-                                                                                setViewPagesLoading(true);
-                                                                                try {
-                                                                                    const res = await fetch(`/api/chapters/${ch.id}`);
-                                                                                    const data = await res.json();
-                                                                                    const sorted = (data.pages || []).slice().sort((a, b) => a.page_number - b.page_number);
-                                                                                    setViewPages(sorted);
-                                                                                } catch {}
-                                                                                setViewPagesLoading(false);
-                                                                                setReorderMode(false);
-                                                                            }}
-                                                                            style={{ fontSize: '0.72rem', padding: '4px 10px' }}
-                                                                        >
-                                                                            İptal
-                                                                        </button>
-                                                                    </>
-                                                                ) : (
-                                                                    <button
-                                                                        className="btn btn-sm btn-ghost"
-                                                                        onClick={() => setReorderMode(true)}
-                                                                        style={{ fontSize: '0.72rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                                                                        title="Sıralamayı düzenle"
-                                                                    >
-                                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 5 19 12"/></svg>
-                                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-                                                                        Sırala
+                                                        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 10 }}>{viewPages.length} sayfa — önizleme için tıklayın</p>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: 6 }}>
+                                                            {viewPages.map(p => (
+                                                                <div key={p.id} style={{ position: 'relative', borderRadius: 6, overflow: 'hidden', aspectRatio: '3/4', background: 'var(--bg-tertiary)' }}
+                                                                    onMouseEnter={e => { const btn = e.currentTarget.querySelector('.pg-del-btn'); if (btn) btn.style.opacity='1'; }}
+                                                                    onMouseLeave={e => { const btn = e.currentTarget.querySelector('.pg-del-btn'); if (btn) btn.style.opacity='0'; }}>
+                                                                    <div style={{ width: '100%', height: '100%', cursor: 'pointer' }} onClick={() => setPreviewImage({ src: p.image_path, title: `B\u00f6l\u00fcm ${ch.chapter_number} \u2014 Sayfa ${p.page_number}` })}>
+                                                                        <img src={p.image_path} alt={`Page ${p.page_number}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
+                                                                    </div>
+                                                                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)', fontSize: '0.6rem', color: '#fff', textAlign: 'center', padding: '2px 0' }}>
+                                                                        {p.page_number}
+                                                                    </div>
+                                                                    <button className="pg-del-btn" onClick={e => { e.stopPropagation(); deleteChapterPage(p.id); }}
+                                                                        style={{ position: 'absolute', top: 3, right: 3, width: 22, height: 22, borderRadius: '50%', background: 'rgba(239,68,68,0.92)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s', zIndex: 2, padding: 0 }}
+                                                                        title="Sayfay\u0131 sil">
+                                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
                                                                     </button>
-                                                                )}
-                                                            </div>
+                                                                </div>
+                                                            ))}
                                                         </div>
-
-                                                        {reorderMode ? (
-                                                            /* Reorder mode: list view with up/down buttons and editable page numbers */
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                                                {viewPages.map((p, idx) => (
-                                                                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-tertiary)', borderRadius: 6, padding: '4px 8px', border: '1px solid var(--border-color)' }}>
-                                                                        {/* Thumbnail */}
-                                                                        <div style={{ width: 36, height: 48, borderRadius: 4, overflow: 'hidden', flexShrink: 0, background: 'var(--bg-secondary)' }}>
-                                                                            <img src={p.image_path} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
-                                                                        </div>
-                                                                        {/* Page number input */}
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0 }}>
-                                                                            <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Sıra No</span>
-                                                                            <input
-                                                                                type="number"
-                                                                                value={p.page_number}
-                                                                                min={1}
-                                                                                onChange={e => updatePageNumber(idx, e.target.value)}
-                                                                                style={{ width: 52, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.75rem', textAlign: 'center' }}
-                                                                            />
-                                                                        </div>
-                                                                        {/* File name */}
-                                                                        <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                            {p.image_path ? p.image_path.split('/').pop() : '—'}
-                                                                        </span>
-                                                                        {/* Up / Down buttons */}
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
-                                                                            <button
-                                                                                onClick={() => movePageUp(idx)}
-                                                                                disabled={idx === 0}
-                                                                                title="Yukarı taşı"
-                                                                                style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border-color)', background: idx === 0 ? 'transparent' : 'var(--bg-secondary)', color: idx === 0 ? 'var(--text-muted)' : 'var(--text-primary)', cursor: idx === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-                                                                            >
-                                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m18 15-6-6-6 6"/></svg>
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={() => movePageDown(idx)}
-                                                                                disabled={idx === viewPages.length - 1}
-                                                                                title="Aşağı taşı"
-                                                                                style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border-color)', background: idx === viewPages.length - 1 ? 'transparent' : 'var(--bg-secondary)', color: idx === viewPages.length - 1 ? 'var(--text-muted)' : 'var(--text-primary)', cursor: idx === viewPages.length - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-                                                                            >
-                                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
-                                                            /* Normal mode: thumbnail grid */
-                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: 6 }}>
-                                                                {viewPages.map(p => (
-                                                                    <div key={p.id} style={{ position: 'relative', borderRadius: 6, overflow: 'hidden', aspectRatio: '3/4', background: 'var(--bg-tertiary)' }}
-                                                                        onMouseEnter={e => { const btn = e.currentTarget.querySelector('.pg-del-btn'); if (btn) btn.style.opacity='1'; }}
-                                                                        onMouseLeave={e => { const btn = e.currentTarget.querySelector('.pg-del-btn'); if (btn) btn.style.opacity='0'; }}>
-                                                                        <div style={{ width: '100%', height: '100%', cursor: 'pointer' }} onClick={() => setPreviewImage({ src: p.image_path, title: `Bölüm ${ch.chapter_number} — Sayfa ${p.page_number}` })}>
-                                                                            <img src={p.image_path} alt={`Page ${p.page_number}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
-                                                                        </div>
-                                                                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)', fontSize: '0.6rem', color: '#fff', textAlign: 'center', padding: '2px 0' }}>
-                                                                            {p.page_number}
-                                                                        </div>
-                                                                        <button className="pg-del-btn" onClick={e => { e.stopPropagation(); deleteChapterPage(p.id); }}
-                                                                            style={{ position: 'absolute', top: 3, right: 3, width: 22, height: 22, borderRadius: '50%', background: 'rgba(239,68,68,0.92)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s', zIndex: 2, padding: 0 }}
-                                                                            title="Sayfayı sil">
-                                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                                                                        </button>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
                                                     </>
                                                 )}
                                             </div>
@@ -5193,555 +4745,135 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                 {tab === 'media' && (
                     <>
                         <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}><ImageIcon /> Medya Kütüphanesi</h2>
-
-                        {/* ── Görünüm Seçici ── */}
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-                            <button
-                                className={`btn btn-sm ${mediaView === 'flat' ? 'btn-primary' : 'btn-ghost'}`}
-                                onClick={() => { setMediaView('flat'); }}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                                Düz Liste
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <button className="btn btn-primary btn-sm" onClick={() => loadMedia(1, false, mediaFilter)}>
+                                {mediaLoading && mediaPage === 1 ? 'Yükleniyor...' : 'Yenile'}
                             </button>
-                            <button
-                                className={`btn btn-sm ${mediaView === 'folders' ? 'btn-primary' : 'btn-ghost'}`}
-                                onClick={() => {
-                                    setMediaView('folders');
-                                    setSelectedMediaSeries(null);
-                                    setSelectedMediaChapter(null);
-                                    setChapterPages(null);
-                                    setSeriesChapterFolders(null);
-                                    loadMediaFolders();
-                                }}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                                Seri Klasörleri
-                            </button>
-                            <button
-                                className={`btn btn-sm ${mediaView === 'user-folders' ? 'btn-primary' : 'btn-ghost'}`}
-                                onClick={() => {
-                                    setMediaView('user-folders');
-                                    setSelectedUserFolder(null);
-                                    setUserFolderDetail(null);
-                                    setUserFolderSearch('');
-                                    loadUserFolders();
-                                }}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                Kullanıcı Klasörleri
-                            </button>
+                            {['all', 'covers', 'pages', 'user_images'].map(f => {
+                                const labelsTr = { all: 'Tümü', covers: 'Kapaklar', pages: 'Sayfalar', user_images: 'Kullanıcı Görselleri' };
+                                return (
+                                    <button key={f} className={`btn btn-sm ${mediaFilter === f ? 'btn-primary' : 'btn-ghost'}`} onClick={() => {
+                                        exitSelectMode();
+                                        setMediaFilter(f);
+                                        loadMedia(1, false, f);
+                                    }}>{labelsTr[f] || f}</button>
+                                );
+                            })}
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                                {mediaFiles.length} / {mediaTotal} dosya
+                            </span>
+                            {!mediaSelectMode ? (
+                                <button className="btn btn-sm btn-ghost" style={{ border: '1px solid var(--border-color)' }} onClick={() => { setMediaSelectMode(true); setMediaSelected(new Set()); }}>
+                                    <CheckIcon /> Seç
+                                </button>
+                            ) : (
+                                <button className="btn btn-sm btn-ghost" style={{ border: '1px solid var(--border-color)' }} onClick={exitSelectMode}>
+                                    İptal
+                                </button>
+                            )}
                         </div>
 
-                        {/* ══════════ KLASÖR GÖRÜNÜMÜ ══════════ */}
-                        {mediaView === 'folders' && (
+                        {mediaSelectMode && (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 8, flexWrap: 'wrap' }}>
+                                <button className="btn btn-sm btn-ghost" style={{ fontSize: '0.78rem' }} onClick={toggleMediaSelectAll}>
+                                    {mediaSelected.size === mediaFiles.length && mediaFiles.length > 0 ? 'Tüm Seçimi Kaldır' : 'Tümünü Seç'}
+                                </button>
+                                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{mediaSelected.size} seçili</span>
+                            </div>
+                        )}
+
+                        {/* ── Görsel Yükleme Alanı ── */}
+                        {mediaFilter !== 'user_images' && (
+                            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed var(--border-color)', borderRadius: 10, padding: '16px 20px', marginBottom: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <UploadIcon />
+                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Görsel Yükle</span>
+                                <select
+                                    value={mediaUploadCategory}
+                                    onChange={e => setMediaUploadCategory(e.target.value)}
+                                    style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                                >
+                                    <option value="covers">Kapaklar</option>
+                                    <option value="pages">Sayfalar</option>
+                                </select>
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: mediaUploading ? 'not-allowed' : 'pointer', background: 'var(--accent)', color: '#fff', padding: '6px 16px', borderRadius: 7, fontSize: '0.82rem', fontWeight: 700, opacity: mediaUploading ? 0.65 : 1, transition: 'opacity 0.2s' }}>
+                                    {mediaUploading ? 'Yükleniyor...' : <><UploadIcon /> Dosya Seç</>}
+                                    <input
+                                        ref={mediaUploadRef}
+                                        type="file"
+                                        multiple
+                                        accept="image/*"
+                                        style={{ display: 'none' }}
+                                        disabled={mediaUploading}
+                                        onChange={handleMediaUpload}
+                                    />
+                                </label>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>JPG, PNG, WebP, GIF, SVG — Otomatik WebP'ye dönüştürülür</span>
+                            </div>
+                        )}
+
+                        {mediaFilter === 'user_images' && (
+                            <div style={{ padding: '10px 14px', marginBottom: 16, borderRadius: 8, background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                Kullanıcıların profil avatarları ve kapak fotoğrafları (DB + /uploads/avatars/ dizini birleşik). Görsele tıklayınca önizleme açılır. Silme işlemi dosyayı kaldırır ve kullanıcının profil kaydını temizler.
+                            </div>
+                        )}
+
+                        {mediaFiles.length === 0 && !mediaLoading ? (
+                            <div className="admin-card" style={{ textAlign: 'center', padding: 40 }}>
+                                <ImageIcon />
+                                <p style={{ color: 'var(--text-muted)', marginTop: 12 }}>Medya dosyalarını yüklemek için "Yenile"ye tıklayın.</p>
+                            </div>
+                        ) : (
                             <>
-                                {/* Breadcrumb */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: '0.82rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                                    {mediaFolderBreadcrumb().map((item, i, arr) => (
-                                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            {i > 0 && <span style={{ color: 'var(--border-color)' }}>/</span>}
-                                            {item.onClick ? (
-                                                <button
-                                                    onClick={item.onClick}
-                                                    style={{ background: 'none', border: 'none', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '0.82rem', padding: 0 }}
-                                                >
-                                                    {item.label}
-                                                </button>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{item.label}</span>
-                                            )}
-                                        </span>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+                                    {mediaFiles.map((m, i) => (
+                                        <LazyMediaCard
+                                            key={`${m.path}-${i}`}
+                                            m={m}
+                                            onPreview={() => setPreviewImage({ src: m.path, title: m.name })}
+                                            onDelete={() => setConfirmModal({ action: 'delete-media', body: { filePath: m.path }, text: `"${m.name}" dosyasını silmek istediğinize emin misiniz?` })}
+                                            selectionMode={mediaSelectMode}
+                                            selected={mediaSelected.has(m.path)}
+                                            onToggleSelect={toggleMediaSelect}
+                                        />
                                     ))}
                                 </div>
-
-                                {/* ── Seri listesi ── */}
-                                {!selectedMediaSeries && (
-                                    <>
-                                        {mediaFoldersLoading ? (
-                                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Klasörler yükleniyor...</div>
-                                        ) : mediaFolders.length === 0 ? (
-                                            <div className="admin-card" style={{ textAlign: 'center', padding: 40 }}>
-                                                <p style={{ color: 'var(--text-muted)' }}>Henüz seri bulunamadı.</p>
-                                            </div>
-                                        ) : (
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                                                {mediaFolders.map(folder => (
-                                                    <div
-                                                        key={folder.seriesId}
-                                                        onClick={() => openMediaSeriesFolder(folder)}
-                                                        style={{
-                                                            background: 'var(--bg-card)', border: '1px solid var(--border-color)',
-                                                            borderRadius: 10, padding: 14, cursor: 'pointer',
-                                                            display: 'flex', flexDirection: 'column', gap: 8,
-                                                            transition: 'border-color 0.15s, background 0.15s'
-                                                        }}
-                                                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'rgba(99,102,241,0.06)'; }}
-                                                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.background = 'var(--bg-card)'; }}
-                                                    >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                            {folder.coverUrl ? (
-                                                                <img src={folder.coverUrl} alt={folder.title} style={{ width: 40, height: 56, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
-                                                            ) : (
-                                                                <div style={{ width: 40, height: 56, borderRadius: 4, background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                                                </div>
-                                                            )}
-                                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                                <div style={{ fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }} title={folder.title}>{folder.title}</div>
-                                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3 }}>
-                                                                    {folder.chapterCount} bölüm · {folder.pagesCount} sayfa
-                                                                </div>
-                                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{folder.totalSize}</div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* ── Seri içi: Kapak + Bölüm listesi ── */}
-                                {selectedMediaSeries && !selectedMediaChapter && (
-                                    <>
-                                        {seriesChaptersLoading ? (
-                                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Yükleniyor...</div>
-                                        ) : seriesChapterFolders && (
-                                            <>
-                                                {/* Kapak Görseli Klasörü */}
-                                                <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 10 }}>
-                                                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                                        Kapak Görseli
-                                                    </div>
-                                                    {seriesChapterFolders.series?.coverUrl ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                            <img
-                                                                src={seriesChapterFolders.series.coverUrl}
-                                                                alt="Kapak"
-                                                                style={{ width: 60, height: 84, objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }}
-                                                                onClick={() => setPreviewImage({ src: seriesChapterFolders.series.coverUrl, title: `${seriesChapterFolders.series.title} — Kapak` })}
-                                                                onError={e => e.target.style.display='none'}
-                                                            />
-                                                            <div>
-                                                                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4 }}>{seriesChapterFolders.series.coverUrl.split('/').pop()}</div>
-                                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{seriesChapterFolders.series.coverSize}</div>
-                                                                <button
-                                                                    className="btn btn-danger btn-sm"
-                                                                    style={{ marginTop: 8, fontSize: '0.72rem' }}
-                                                                    onClick={() => setConfirmModal({ action: 'delete-media', body: { filePath: seriesChapterFolders.series.coverUrl }, text: `"${seriesChapterFolders.series.title}" kapak görselini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.` })}
-                                                                >
-                                                                    <TrashIcon /> Sil
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Kapak görseli yok veya varsayılan kullanılıyor.</div>
-                                                    )}
-                                                </div>
-
-                                                {/* Bölüm Klasörleri */}
-                                                <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 10 }}>Bölümler ({seriesChapterFolders.chapters?.length || 0})</div>
-                                                {seriesChapterFolders.chapters?.length === 0 ? (
-                                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '16px 0' }}>Bu seriye ait bölüm bulunamadı.</div>
-                                                ) : (
-                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
-                                                        {(seriesChapterFolders.chapters || []).map(ch => (
-                                                            <div
-                                                                key={ch.chapterId}
-                                                                onClick={() => openMediaChapterFolder(ch)}
-                                                                style={{
-                                                                    background: 'var(--bg-card)', border: '1px solid var(--border-color)',
-                                                                    borderRadius: 8, padding: '10px 12px', cursor: 'pointer',
-                                                                    display: 'flex', flexDirection: 'column', gap: 4,
-                                                                    transition: 'border-color 0.15s'
-                                                                }}
-                                                                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                                                                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
-                                                            >
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--accent)', flexShrink: 0 }}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                                                                    <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>Bölüm {ch.chapterNumber}</span>
-                                                                </div>
-                                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.title}</div>
-                                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{ch.pageCount} sayfa · {ch.dirSize}</div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* ── Bölüm sayfaları ── */}
-                                {selectedMediaChapter && (
-                                    <>
-                                        {chapterPagesLoading ? (
-                                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Sayfalar yükleniyor...</div>
-                                        ) : chapterPages && (
-                                            <>
-                                                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 14 }}>
-                                                    {chapterPages.pages?.length || 0} sayfa
-                                                </div>
-                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
-                                                    {(chapterPages.pages || []).map(p => (
-                                                        <div key={p.pageId} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
-                                                            {!p.isShared && p.exists ? (
-                                                                <img
-                                                                    src={p.path}
-                                                                    alt={`Sayfa ${p.pageNumber}`}
-                                                                    style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', cursor: 'pointer', display: 'block' }}
-                                                                    onClick={() => setPreviewImage({ src: p.path, title: `Sayfa ${p.pageNumber} — ${p.name}` })}
-                                                                    loading="lazy"
-                                                                    onError={e => { e.target.style.display='none'; }}
-                                                                />
-                                                            ) : (
-                                                                <div style={{ width: '100%', aspectRatio: '3/4', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                                                    {p.isShared ? 'Paylaşılan' : 'Bulunamadı'}
-                                                                </div>
-                                                            )}
-                                                            <div style={{ padding: '4px 6px', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                                                                S.{p.pageNumber} · {p.sizeFormatted}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </>
-                                         )}
-                                    </>
+                                {mediaHasMore && (
+                                    <div style={{ textAlign: 'center', marginTop: 24 }}>
+                                        <button className="btn btn-secondary" onClick={() => loadMedia(mediaPage + 1, true, mediaFilter)} disabled={mediaLoading}>
+                                            {mediaLoading ? 'Yükleniyor...' : 'Daha Fazla Medya Yükle'}
+                                        </button>
+                                    </div>
                                 )}
                             </>
                         )}
 
-                        {/* ══════════ KULLANICI KLASÖR GÖRÜNÜMÜ ══════════ */}
-                        {mediaView === 'user-folders' && (
-                            <>
-                                {/* Breadcrumb */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: '0.82rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                                    {userFolderBreadcrumb().map((item, i) => (
-                                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            {i > 0 && <span style={{ color: 'var(--border-color)' }}>/</span>}
-                                            {item.onClick ? (
-                                                <button
-                                                    onClick={item.onClick}
-                                                    style={{ background: 'none', border: 'none', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '0.82rem', padding: 0 }}
-                                                >
-                                                    {item.label}
-                                                </button>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{item.label}</span>
-                                            )}
-                                        </span>
-                                    ))}
-                                </div>
-
-                                {/* ── Kullanıcı listesi ── */}
-                                {!selectedUserFolder && (
-                                    <>
-                                        {/* Arama */}
-                                        <div style={{ marginBottom: 14 }}>
-                                            <input
-                                                type="text"
-                                                placeholder="Kullanıcı ara..."
-                                                value={userFolderSearch}
-                                                onChange={e => setUserFolderSearch(e.target.value)}
-                                                style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: '0.85rem', width: '100%', maxWidth: 300 }}
-                                            />
-                                        </div>
-
-                                        {userFoldersLoading ? (
-                                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Kullanıcı klasörleri yükleniyor...</div>
-                                        ) : userFolders.length === 0 ? (
-                                            <div className="admin-card" style={{ textAlign: 'center', padding: 40 }}>
-                                                <p style={{ color: 'var(--text-muted)' }}>Henüz kullanıcı bulunamadı.</p>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 10 }}>
-                                                    {userFolders.filter(f => !userFolderSearch || f.username.toLowerCase().includes(userFolderSearch.toLowerCase())).length} kullanıcı
-                                                </div>
-                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                                                    {userFolders
-                                                        .filter(f => !userFolderSearch || f.username.toLowerCase().includes(userFolderSearch.toLowerCase()))
-                                                        .map(folder => (
-                                                        <div
-                                                            key={folder.userId}
-                                                            onClick={() => openUserFolder(folder)}
-                                                            style={{
-                                                                background: 'var(--bg-card)', border: '1px solid var(--border-color)',
-                                                                borderRadius: 10, padding: 14, cursor: 'pointer',
-                                                                display: 'flex', flexDirection: 'column', gap: 8,
-                                                                transition: 'border-color 0.15s, background 0.15s',
-                                                                position: 'relative'
-                                                            }}
-                                                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'rgba(99,102,241,0.06)'; }}
-                                                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.background = 'var(--bg-card)'; }}
-                                                        >
-                                                            {folder.orphanCount > 0 && (
-                                                                <div style={{ position: 'absolute', top: 8, right: 8, background: '#f59e0b', color: '#000', fontSize: '0.6rem', fontWeight: 800, borderRadius: 4, padding: '1px 5px' }}>
-                                                                    {folder.orphanCount} sahipsiz
-                                                                </div>
-                                                            )}
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                                {folder.avatarUrl ? (
-                                                                    <img
-                                                                        src={folder.avatarUrl}
-                                                                        alt={folder.username}
-                                                                        style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: '50%', flexShrink: 0, border: '2px solid var(--border-color)' }}
-                                                                        onError={e => { e.target.style.display='none'; }}
-                                                                    />
-                                                                ) : (
-                                                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
-                                                                        {folder.username.charAt(0).toUpperCase()}
-                                                                    </div>
-                                                                )}
-                                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }} title={folder.username}>
-                                                                        {folder.username}
-                                                                    </div>
-                                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                                                                        {folder.role || 'user'}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                                                {folder.avatarUrl && (
-                                                                    <span style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, background: 'rgba(99,102,241,0.12)', color: 'var(--accent-light)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                                                        Avatar
-                                                                    </span>
-                                                                )}
-                                                                {folder.coverUrl && (
-                                                                    <span style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
-                                                                        Kapak
-                                                                    </span>
-                                                                )}
-                                                                {folder.fileCount === 0 && !folder.orphanCount && (
-                                                                    <span style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}>
-                                                                        Varsayılan
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                                                {folder.fileCount + folder.orphanCount} dosya · {folder.totalSize}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* ── Seçili kullanıcının dosya detayı ── */}
-                                {selectedUserFolder && (
-                                    <>
-                                        {userFolderDetailLoading ? (
-                                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Yükleniyor...</div>
-                                        ) : userFolderDetail && (
-                                            <>
-                                                {/* Kullanıcı başlık kartı */}
-                                                <div style={{ padding: '12px 16px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                    {selectedUserFolder.avatarUrl ? (
-                                                        <img src={selectedUserFolder.avatarUrl} alt={selectedUserFolder.username} style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border-color)' }} onError={e => e.target.style.display='none'} />
-                                                    ) : (
-                                                        <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                                                            {selectedUserFolder.username.charAt(0).toUpperCase()}
-                                                        </div>
-                                                    )}
-                                                    <div>
-                                                        <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{selectedUserFolder.username}</div>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{selectedUserFolder.role || 'user'} · ID: {selectedUserFolder.userId}</div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Dosyalar */}
-                                                {userFolderDetail.files?.length === 0 ? (
-                                                    <div className="admin-card" style={{ textAlign: 'center', padding: 30 }}>
-                                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Bu kullanıcıya ait özel medya dosyası bulunamadı (varsayılan görseller kullanılıyor).</p>
-                                                    </div>
-                                                ) : (
-                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
-                                                        {(userFolderDetail.files || []).map((file, idx) => (
-                                                            <div key={idx} style={{ background: 'var(--bg-card)', border: `1px solid ${file.type === 'orphan' ? 'rgba(245,158,11,0.35)' : 'var(--border-color)'}`, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
-                                                                {file.type === 'orphan' && (
-                                                                    <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 5, background: '#f59e0b', color: '#000', fontSize: '0.6rem', fontWeight: 800, borderRadius: 4, padding: '2px 6px' }}>
-                                                                        Sahipsiz
-                                                                    </div>
-                                                                )}
-                                                                {file.exists && !file.isExternal ? (
-                                                                    <img
-                                                                        src={file.path}
-                                                                        alt={file.label}
-                                                                        style={{ width: '100%', aspectRatio: file.type === 'cover' ? '3/1' : '1/1', objectFit: 'cover', cursor: 'pointer', display: 'block' }}
-                                                                        onClick={() => setPreviewImage({ src: file.path, title: `${selectedUserFolder.username} — ${file.label}` })}
-                                                                        loading="lazy"
-                                                                        onError={e => { e.target.style.display='none'; }}
-                                                                    />
-                                                                ) : (
-                                                                    <div style={{ width: '100%', aspectRatio: '1/1', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                                                    </div>
-                                                                )}
-                                                                <div style={{ padding: '8px 10px' }}>
-                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{file.label}</div>
-                                                                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={file.name}>{file.name}</div>
-                                                                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 3 }}>{file.sizeFormatted}</div>
-                                                                    <button
-                                                                        className="btn btn-danger btn-sm"
-                                                                        style={{ marginTop: 8, fontSize: '0.7rem', width: '100%', justifyContent: 'center' }}
-                                                                        onClick={() => setConfirmModal({
-                                                                            action: 'delete-media',
-                                                                            body: { filePath: file.path },
-                                                                            text: `"${selectedUserFolder.username}" kullanıcısının "${file.label}" dosyasını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
-                                                                        })}
-                                                                    >
-                                                                        <TrashIcon /> Sil
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
-                                    </>
-                                )}
-                            </>
-                        )}
-                        {mediaView === 'flat' && (
-                            <>
-                                <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                                    <button className="btn btn-primary btn-sm" onClick={() => loadMedia(1, false, mediaFilter)}>
-                                        {mediaLoading && mediaPage === 1 ? 'Yükleniyor...' : 'Yenile'}
+                        {/* ── Floating bulk action bar ── */}
+                        {mediaSelectMode && mediaSelected.size > 0 && mounted && createPortal(
+                            <div style={{
+                                position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                                borderRadius: 12, padding: '12px 20px', display: 'flex', gap: 10, alignItems: 'center',
+                                boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 9999, flexWrap: 'wrap'
+                            }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{mediaSelected.size} dosya seçildi</span>
+                                <button
+                                    className="btn btn-sm"
+                                    style={{ background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
+                                    onClick={handleBulkDownload}
+                                >
+                                    <DownloadIcon /> Seçilenleri İndir
+                                </button>
+                                <button
+                                        className="btn btn-danger btn-sm"
+                                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                        onClick={handleBulkDelete}
+                                        disabled={bulkDeleting}
+                                    >
+                                        <TrashIcon /> {bulkDeleting ? 'Siliniyor...' : 'Seçilenleri Sil'}
                                     </button>
-                                    {['all', 'covers', 'pages', 'user_images'].map(f => {
-                                        const labelsTr = { all: 'Tümü', covers: 'Kapaklar', pages: 'Sayfalar', user_images: 'Kullanıcı Görselleri' };
-                                        return (
-                                            <button key={f} className={`btn btn-sm ${mediaFilter === f ? 'btn-primary' : 'btn-ghost'}`} onClick={() => {
-                                                exitSelectMode();
-                                                setMediaFilter(f);
-                                                loadMedia(1, false, f);
-                                            }}>{labelsTr[f] || f}</button>
-                                        );
-                                    })}
-                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                                        {mediaFiles.length} / {mediaTotal} dosya
-                                    </span>
-                                    {!mediaSelectMode ? (
-                                        <button className="btn btn-sm btn-ghost" style={{ border: '1px solid var(--border-color)' }} onClick={() => { setMediaSelectMode(true); setMediaSelected(new Set()); }}>
-                                            <CheckIcon /> Seç
-                                        </button>
-                                    ) : (
-                                        <button className="btn btn-sm btn-ghost" style={{ border: '1px solid var(--border-color)' }} onClick={exitSelectMode}>
-                                            İptal
-                                        </button>
-                                    )}
-                                </div>
-
-                                {mediaSelectMode && (
-                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 8, flexWrap: 'wrap' }}>
-                                        <button className="btn btn-sm btn-ghost" style={{ fontSize: '0.78rem' }} onClick={toggleMediaSelectAll}>
-                                            {mediaSelected.size === mediaFiles.length && mediaFiles.length > 0 ? 'Tüm Seçimi Kaldır' : 'Tümünü Seç'}
-                                        </button>
-                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{mediaSelected.size} seçili</span>
-                                    </div>
-                                )}
-
-                                {/* ── Görsel Yükleme Alanı ── */}
-                                {mediaFilter !== 'user_images' && (
-                                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed var(--border-color)', borderRadius: 10, padding: '16px 20px', marginBottom: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                                        <UploadIcon />
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Görsel Yükle</span>
-                                        <select
-                                            value={mediaUploadCategory}
-                                            onChange={e => setMediaUploadCategory(e.target.value)}
-                                            style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
-                                        >
-                                            <option value="covers">Kapaklar</option>
-                                            <option value="pages">Sayfalar</option>
-                                        </select>
-                                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: mediaUploading ? 'not-allowed' : 'pointer', background: 'var(--accent)', color: '#fff', padding: '6px 16px', borderRadius: 7, fontSize: '0.82rem', fontWeight: 700, opacity: mediaUploading ? 0.65 : 1, transition: 'opacity 0.2s' }}>
-                                            {mediaUploading ? 'Yükleniyor...' : <><UploadIcon /> Dosya Seç</>}
-                                            <input
-                                                ref={mediaUploadRef}
-                                                type="file"
-                                                multiple
-                                                accept="image/*"
-                                                style={{ display: 'none' }}
-                                                disabled={mediaUploading}
-                                                onChange={handleMediaUpload}
-                                            />
-                                        </label>
-                                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>JPG, PNG, WebP, GIF, SVG — Otomatik WebP'ye dönüştürülür</span>
-                                    </div>
-                                )}
-
-                                {mediaFilter === 'user_images' && (
-                                    <div style={{ padding: '10px 14px', marginBottom: 16, borderRadius: 8, background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                        Kullanıcıların profil avatarları ve kapak fotoğrafları (DB + /uploads/avatars/ dizini birleşik). Görsele tıklayınca önizleme açılır. Silme işlemi dosyayı kaldırır ve kullanıcının profil kaydını temizler.
-                                    </div>
-                                )}
-
-                                {mediaFiles.length === 0 && !mediaLoading ? (
-                                    <div className="admin-card" style={{ textAlign: 'center', padding: 40 }}>
-                                        <ImageIcon />
-                                        <p style={{ color: 'var(--text-muted)', marginTop: 12 }}>Medya dosyalarını yüklemek için "Yenile"ye tıklayın.</p>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-                                            {mediaFiles.map((m, i) => (
-                                                <LazyMediaCard
-                                                    key={`${m.path}-${i}`}
-                                                    m={m}
-                                                    onPreview={() => setPreviewImage({ src: m.path, title: m.name })}
-                                                    onDelete={() => setConfirmModal({ action: 'delete-media', body: { filePath: m.path }, text: `"${m.name}" dosyasını silmek istediğinize emin misiniz?` })}
-                                                    selectionMode={mediaSelectMode}
-                                                    selected={mediaSelected.has(m.path)}
-                                                    onToggleSelect={toggleMediaSelect}
-                                                />
-                                            ))}
-                                        </div>
-                                        {mediaHasMore && (
-                                            <div style={{ textAlign: 'center', marginTop: 24 }}>
-                                                <button className="btn btn-secondary" onClick={() => loadMedia(mediaPage + 1, true, mediaFilter)} disabled={mediaLoading}>
-                                                    {mediaLoading ? 'Yükleniyor...' : 'Daha Fazla Medya Yükle'}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* ── Floating bulk action bar ── */}
-                                {mediaSelectMode && mediaSelected.size > 0 && mounted && createPortal(
-                                    <div style={{
-                                        position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-                                        background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                                        borderRadius: 12, padding: '12px 20px', display: 'flex', gap: 10, alignItems: 'center',
-                                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 9999, flexWrap: 'wrap'
-                                    }}>
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{mediaSelected.size} dosya seçildi</span>
-                                        <button
-                                            className="btn btn-sm"
-                                            style={{ background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
-                                            onClick={handleBulkDownload}
-                                        >
-                                            <DownloadIcon /> Seçilenleri İndir
-                                        </button>
-                                        <button
-                                                className="btn btn-danger btn-sm"
-                                                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                                                onClick={handleBulkDelete}
-                                                disabled={bulkDeleting}
-                                            >
-                                                <TrashIcon /> {bulkDeleting ? 'Siliniyor...' : 'Seçilenleri Sil'}
-                                            </button>
-                                        <button className="btn btn-sm btn-ghost" onClick={exitSelectMode} style={{ fontSize: '0.78rem' }}>İptal</button>
-                                    </div>,
-                                    document.body
-                                )}
-                            </>
+                                <button className="btn btn-sm btn-ghost" onClick={exitSelectMode} style={{ fontSize: '0.78rem' }}>İptal</button>
+                            </div>,
+                            document.body
                         )}
                     </>
                 )}
@@ -6218,28 +5350,6 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                             max="100"
                                         />
                                     </div>
-                                    <div className="form-group" style={{ marginTop: 12, padding: '12px', background: 'rgba(245,158,11,0.06)', borderRadius: 8, border: '1px solid rgba(245,158,11,0.2)' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                            Geri Sayım Bitiş Tarihi
-                                        </label>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 8px' }}>
-                                            Bir bitiş tarihi/saati seçin — bağış afişinde kalan gün/saat/dakika gösterilir. Son 3 günde tasarım aciliyeti vurgulayan renge geçer. Boş bırakılırsa geri sayım gösterilmez.
-                                        </p>
-                                        <input
-                                            type="datetime-local"
-                                            className="form-input"
-                                            value={settings.donation_goal_deadline}
-                                            onChange={(e) => setSettings({...settings, donation_goal_deadline: e.target.value})}
-                                        />
-                                        {settings.donation_goal_deadline && (
-                                            <button
-                                                type="button"
-                                                style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                                                onClick={() => setSettings({...settings, donation_goal_deadline: ''})}
-                                            >✕ Geri sayımı kaldır</button>
-                                        )}
-                                    </div>
                                 </div>
                             </div>
 
@@ -6684,24 +5794,6 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                             <div style={{ marginTop: 8, padding: 8, background: 'var(--bg-tertiary)', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                                 <img src={customize.favicon_url} alt="Favicon önizleme" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
                                                 <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Önizleme</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setCustomize({ ...customize, favicon_url: '' })}
-                                                    style={{
-                                                        marginLeft: 8,
-                                                        padding: '4px 8px',
-                                                        background: 'rgba(239,68,68,0.15)',
-                                                        border: '1px solid rgba(239,68,68,0.4)',
-                                                        borderRadius: 4,
-                                                        color: '#ef4444',
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 600,
-                                                    }}
-                                                    title="Favicon'u kaldır"
-                                                >
-                                                    Kaldır
-                                                </button>
                                             </div>
                                         )}
                                         <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginTop: 4 }}>ICO, PNG, SVG formatları desteklenir.</small>
@@ -6770,124 +5862,6 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                         <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginTop: 4 }}>Bölüm ve seri sayfalarındaki yorum alanının görünümünü değiştirir.</small>
                                     </div>
                                 </div>
-                            </div>
-
-                            {/* ── Seri Detay Tam Sayfa Arka Plan ── */}
-                            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid var(--border-color)', marginBottom: 20 }}>
-                                <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    Seri Detay — Tam Sayfa Arka Plan
-                                </h4>
-                                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 16 }}>
-                                    Aktif edildiğinde seri kapak görseli tüm sayfanın arka planını kaplar ve sayfayı kaydırırken sabit kalır.
-                                </p>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-                                    <div className="form-group" style={{ margin: 0 }}>
-                                        <label>Tam Sayfa Arka Plan</label>
-                                        <select className="form-input" value={customize.sd_fullpage_bg || '0'} onChange={e => setCustomize({ ...customize, sd_fullpage_bg: e.target.value })}>
-                                            <option value="0">Kapalı</option>
-                                            <option value="1">Açık</option>
-                                        </select>
-                                        <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginTop: 4 }}>Kapak görseli tüm sayfayı kaplar, sabit durur.</small>
-                                    </div>
-                                    <div className="form-group" style={{ margin: 0 }}>
-                                        <label>Blur Miktarı (px): {customize.sd_fullpage_bg_blur || '28'}</label>
-                                        <input type="range" min="0" max="60" value={customize.sd_fullpage_bg_blur || '28'}
-                                            onChange={e => setCustomize({ ...customize, sd_fullpage_bg_blur: e.target.value })}
-                                            style={{ width: '100%', marginTop: 8 }} />
-                                        <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginTop: 4 }}>Arka plan görselinin bulanıklık miktarı.</small>
-                                    </div>
-                                    <div className="form-group" style={{ margin: 0 }}>
-                                        <label>Karanlık Örtü Oranı: {Math.round((customize.sd_fullpage_bg_overlay || '0.72') * 100)}%</label>
-                                        <input type="range" min="0" max="95" value={Math.round((customize.sd_fullpage_bg_overlay || '0.72') * 100)}
-                                            onChange={e => setCustomize({ ...customize, sd_fullpage_bg_overlay: (e.target.value / 100).toFixed(2) })}
-                                            style={{ width: '100%', marginTop: 8 }} />
-                                        <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginTop: 4 }}>Görselin üstündeki siyah örtü yoğunluğu.</small>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* ── Sayfa Arka Plan Ayarları ── */}
-                            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid var(--border-color)', marginBottom: 20 }}>
-                                <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    Sayfa Arka Planları
-                                </h4>
-                                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 16 }}>
-                                    Ana sayfa, arşiv, istekler, profil, sıralama ve diğer sayfalar için özel arka plan rengi veya görseli belirleyin. Görsel yüklemek için "Görsel Seç &amp; Yükle" butonunu kullanın; yoksa sadece renk uygulanır.
-                                </p>
-                                {[
-                                    { key: 'global', label: 'Tüm Sayfalar (Genel)', hint: 'Diğer sayfa ayarları boş olduğunda bu genel ayar uygulanır.' },
-                                    { key: 'home', label: 'Ana Sayfa' },
-                                    { key: 'archive', label: 'Arşiv / Seri Listesi (/series)' },
-                                    { key: 'requests', label: 'İstekler (/requests)' },
-                                    { key: 'profile', label: 'Profil (/profile)' },
-                                    { key: 'ranking', label: 'Sıralama (/ranking)' },
-                                ].map(({ key, label, hint }) => (
-                                    <div key={key} style={{ marginBottom: 16, padding: 14, background: 'rgba(0,0,0,0.15)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 10, color: 'var(--text-primary)' }}>{label}</div>
-                                        {hint && <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginBottom: 10 }}>{hint}</small>}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 12, alignItems: 'start' }}>
-                                            {/* Renk seçici */}
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                                    <input type="color" value={customize[`page_bg_${key}_color`] || '#0a0a0d'}
-                                                        onChange={e => setCustomize({ ...customize, [`page_bg_${key}_color`]: e.target.value })}
-                                                        style={{ width: 28, height: 28, border: '1px solid var(--border-color)', borderRadius: 6, padding: 2, cursor: 'pointer', background: 'none' }} />
-                                                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>Renk</span>
-                                                </label>
-                                                <input type="text" className="form-input" value={customize[`page_bg_${key}_color`] || ''}
-                                                    onChange={e => setCustomize({ ...customize, [`page_bg_${key}_color`]: e.target.value })}
-                                                    placeholder="#rrggbb" style={{ fontSize: '0.75rem' }} />
-                                            </div>
-                                            {/* Görsel yükleme */}
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label style={{ fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Arka Plan Görseli</label>
-                                                {customize[`page_bg_${key}_image`] ? (
-                                                    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: 6 }}>
-                                                        <img
-                                                            src={customize[`page_bg_${key}_image`]}
-                                                            alt="Arka plan önizleme"
-                                                            style={{ width: '100%', height: 64, objectFit: 'cover', display: 'block' }}
-                                                        />
-                                                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                                            <label style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '4px 10px', fontSize: '0.72rem', color: '#fff', fontWeight: 600 }}>
-                                                                Değiştir
-                                                                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) handlePageBgImageUpload(key, e.target.files[0]); e.target.value = ''; }} />
-                                                            </label>
-                                                            <button type="button" onClick={() => handlePageBgImageDelete(key)}
-                                                                style={{ background: 'rgba(239,68,68,0.7)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: 6, padding: '4px 10px', fontSize: '0.72rem', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
-                                                                Sil
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <label style={{
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                                        border: '2px dashed var(--border-color)', borderRadius: 8, padding: '14px 10px',
-                                                        cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600,
-                                                        transition: 'border-color 0.2s'
-                                                    }}
-                                                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                                                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
-                                                    >
-                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                                        Görsel Seç &amp; Yükle
-                                                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) handlePageBgImageUpload(key, e.target.files[0]); e.target.value = ''; }} />
-                                                    </label>
-                                                )}
-                                                <small style={{ color: 'var(--text-muted)', fontSize: '0.67rem', display: 'block', marginTop: 4 }}>Max 10MB. PNG, JPEG, WebP, GIF.</small>
-                                            </div>
-                                            {/* Blur slider */}
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label style={{ fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Blur: {customize[`page_bg_${key}_blur`] || '0'}px</label>
-                                                <input type="range" min="0" max="40" value={customize[`page_bg_${key}_blur`] || '0'}
-                                                    onChange={e => setCustomize({ ...customize, [`page_bg_${key}_blur`]: e.target.value })}
-                                                    style={{ width: '100%', marginTop: 8 }} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
                             </div>
 
                             {/* ── SEO Özelleştirmeleri ── */}
@@ -6984,7 +5958,7 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                                                 <input
                                                     type="color"
-                                                    value={customize[key] && customize[key].startsWith('#') ? customize[key] : '#000000'}
+                                                    value={customize[key] || ''}
                                                     onChange={e => setCustomize({ ...customize, [key]: e.target.value })}
                                                     style={{ width: 28, height: 28, border: '1px solid var(--border-color)', borderRadius: 6, padding: 2, cursor: 'pointer', background: 'none' }}
                                                 />
@@ -7038,65 +6012,11 @@ series_detail_design: sData.settings.series_detail_design || 'detail_style1',
                                     <input type="text" className="form-input" placeholder="G-XXXXXXXXXX" value={customize.google_analytics_id || ''} onChange={e => setCustomize({ ...customize, google_analytics_id: e.target.value })} />
                                     <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem' }}>Google Analytics 4 Measurement ID. Boş bırakırsanız devre dışı kalır. GTM kullanıyorsanız GA4'ü GTM üzerinden yapılandırın.</small>
                                 </div>
-                                <div className="form-group" style={{ margin: '0 0 14px' }}>
+                                <div className="form-group" style={{ margin: 0 }}>
                                     <label>Google Tag Manager Kapsayıcı Kimliği</label>
                                     <input type="text" className="form-input" placeholder="GTM-XXXXXXX" value={customize.google_tag_manager_id || ''} onChange={e => setCustomize({ ...customize, google_tag_manager_id: e.target.value })} />
                                     <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem' }}>GTM Container ID (GTM-XXXXXXX). Hem &lt;head&gt; hem &lt;body&gt; snippet'i otomatik eklenir. GA4 + GTM birlikte kullanılırsa GTM üzerinden tetiklenir.</small>
                                 </div>
-                                <div className="form-group" style={{ margin: 0 }}>
-                                    <label>Google Search Console Doğrulama Kodu</label>
-                                    <input type="text" className="form-input" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value={customize.google_site_verification || ''} onChange={e => setCustomize({ ...customize, google_site_verification: e.target.value })} />
-                                    <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem' }}>Google Search Console &gt; Mülk ekle &gt; HTML etiketi yönteminden alınan doğrulama kodunu girin (sadece &lt;meta name="google-site-verification" content="..." /&gt; içindeki değer). Sitenizin Google'da daha hızlı indekslenmesini sağlar.</small>
-                                </div>
-                            </div>
-
-                            {/* ── Google Indexing API ── */}
-                            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid var(--border-color)', marginBottom: 20 }}>
-                                <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <GlobeIcon /> Google Indexing API (Otomatik İndeksleme)
-                                </h4>
-                                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.6 }}>
-                                    Yeni bölüm eklendiğinde Google'ın sayfayı otomatik olarak indekslemesi için Google Search Console Service Account anahtarı gereklidir. <br />
-                                    <strong style={{ color: 'var(--text-secondary)' }}>Kurulum:</strong> Google Cloud Console → Service Accounts → Anahtar Oluştur (JSON) → Aşağıya yükleyin. Search Console'da bu hesabı mülkünüze "Sahip" olarak ekleyin.
-                                </p>
-                                {gIndexingKey.exists ? (
-                                    <div style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 10, padding: '14px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#34d399', display: 'inline-block' }} />
-                                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#34d399' }}>Anahtar Yüklü</span>
-                                            </div>
-                                            {gIndexingKey.clientEmail && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{gIndexingKey.clientEmail}</div>}
-                                            {gIndexingKey.projectId && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Proje: {gIndexingKey.projectId}</div>}
-                                        </div>
-                                        <button type="button" style={{ padding: '7px 14px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }} onClick={async () => { if (!window.confirm('Anahtarı silmek istediğinize emin misiniz?')) return; const fd = new FormData(); fd.append('action', 'delete-key'); const r = await authFetch('/api/admin/google-indexing', { method: 'POST', body: fd }); const d = await r.json(); if (d.success) { setGIndexingKey({ exists: false, clientEmail: null, projectId: null }); show('Anahtar silindi'); } else show(d.error || 'Silinemedi', 'error'); }}>Anahtarı Sil</button>
-                                    </div>
-                                ) : (
-                                    <div style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
-                                        <span style={{ fontSize: '0.82rem', color: '#fbbf24' }}>⚠ Henüz anahtar yüklenmedi. Otomatik indeksleme devre dışı.</span>
-                                    </div>
-                                )}
-                                <div className="form-group" style={{ margin: '0 0 12px' }}>
-                                    <label>Service Account Anahtarı Yükle (.json)</label>
-                                    <input type="file" accept=".json,application/json" className="form-input" style={{ cursor: 'pointer' }} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setGIndexingLoading(true); try { const fd = new FormData(); fd.append('action', 'upload-key'); fd.append('file', file); const r = await authFetch('/api/admin/google-indexing', { method: 'POST', body: fd }); const d = await r.json(); if (d.success) { setGIndexingKey({ exists: true, clientEmail: d.clientEmail, projectId: d.projectId }); show(d.message || 'Anahtar yüklendi'); } else show(d.error || 'Yükleme başarısız', 'error'); } catch { show('Yükleme hatası', 'error'); } finally { setGIndexingLoading(false); e.target.value = ''; } }} disabled={gIndexingLoading} />
-                                    <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem' }}>Google Cloud Console'dan indirilen service account JSON anahtarını yükleyin.</small>
-                                </div>
-                                {gIndexingKey.exists && (
-                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                                        <div className="form-group" style={{ flex: 1, minWidth: 200, margin: 0 }}>
-                                            <label>Test URL (İndeksleme Bildirimi Gönder)</label>
-                                            <input type="url" className="form-input" placeholder={`${typeof window !== 'undefined' ? window.location.origin : 'https://siteniz.com'}/`} value={gIndexingTestUrl} onChange={e => setGIndexingTestUrl(e.target.value)} />
-                                        </div>
-                                        <button type="button" style={{ padding: '10px 18px', background: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 10, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', marginBottom: 2 }} onClick={async () => { setGIndexingLoading(true); setGIndexingTestResult(null); try { const fd = new FormData(); fd.append('action', 'test-indexing'); if (gIndexingTestUrl) fd.append('url', gIndexingTestUrl); const r = await authFetch('/api/admin/google-indexing', { method: 'POST', body: fd }); const d = await r.json(); setGIndexingTestResult(d); } catch (err) { setGIndexingTestResult({ error: err.message }); } finally { setGIndexingLoading(false); } }} disabled={gIndexingLoading}>
-                                            {gIndexingLoading ? 'Test ediliyor...' : 'Test Et'}
-                                        </button>
-                                    </div>
-                                )}
-                                {gIndexingTestResult && (
-                                    <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 8, background: gIndexingTestResult.success ? 'rgba(52,211,153,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${gIndexingTestResult.success ? 'rgba(52,211,153,0.2)' : 'rgba(239,68,68,0.2)'}`, fontSize: '0.82rem', color: gIndexingTestResult.success ? '#34d399' : '#ef4444' }}>
-                                        {gIndexingTestResult.success ? `✓ ${gIndexingTestResult.message}` : `✗ ${gIndexingTestResult.error}`}
-                                    </div>
-                                )}
                             </div>
 
                             {/* ── Gelişmiş: Özel CSS & Script ── */}

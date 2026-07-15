@@ -1,6 +1,5 @@
 'use client';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useAuth } from './AuthProvider';
 
 // Yetişkin içerik mini overlay — kart tasarımını bozmaz
@@ -38,7 +37,7 @@ export function GlassStepsMR({ series, index, lang_rating, user }) {
       <div className="mr-glass-content">
         <div className="mr-glass-rank">#{index + 1}</div>
         <div className="mr-glass-cover" style={{ position: 'relative', overflow: 'hidden' }}>
-          <Image src={cover} alt={series.title} fill loading="lazy" sizes="60px" style={isBlocked ? { filter: 'blur(8px)', transform: 'scale(1.1)' } : {}} />
+          <img src={cover} alt={series.title} loading="lazy" style={isBlocked ? { filter: 'blur(8px)', transform: 'scale(1.1)' } : {}} />
           <AdultMiniOverlay isAdult={series.is_adult} user={user} />
         </div>
         <div className="mr-glass-info">

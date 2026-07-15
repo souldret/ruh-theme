@@ -1,10 +1,9 @@
 'use client';
-import { useState, useEffect, useRef, Suspense, useCallback, lazy } from 'react';
+import { useState, useEffect, useRef, Suspense, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-// CommentSection heavy bir bileşen - dynamic import ile lazy load
-const CommentSection = lazy(() => import('@/components/CommentSection'));
+import CommentSection from '@/components/CommentSection';
 import { useAuth } from '@/components/AuthProvider';
 
 const GENRE_TR = {
@@ -73,7 +72,6 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
 
     // Manga Mode State
     const [currentPageIndex, setCurrentPageIndex] = useState(0);
-    const mangaNavCooldownRef = useRef(false); // rapid-tap debounce
     
     // HUD State
     const [hudVisible, setHudVisible] = useState(true);
@@ -298,18 +296,12 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
 
     const goNextPage = useCallback(() => {
         if (!data?.pages) return;
-        if (mangaNavCooldownRef.current) return; // debounce rapid taps
-        mangaNavCooldownRef.current = true;
-        setTimeout(() => { mangaNavCooldownRef.current = false; }, 280);
         if (currentPageIndex < data.pages.length) {
             setCurrentPageIndex(prev => prev + 1);
         }
     }, [currentPageIndex, data]);
 
     const goPrevPage = useCallback(() => {
-        if (mangaNavCooldownRef.current) return; // debounce rapid taps
-        mangaNavCooldownRef.current = true;
-        setTimeout(() => { mangaNavCooldownRef.current = false; }, 280);
         if (currentPageIndex > 0) {
             setCurrentPageIndex(prev => prev - 1);
         } else if (data?.prevChapter) {
@@ -411,7 +403,7 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
     useEffect(() => {
         if (!user || !authFetch || readTriggered) return;
         if (readingProgress > 70) {
-            authFetch('/api/users/read-chapter', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chapterId }) })
+            authFetch('/api/users/read-chapter', { method: 'POST', body: JSON.stringify({ chapterId }) })
               .then(() => { if (refreshUser) refreshUser(); })
               .catch(() => {});
             setReadTriggered(true);
@@ -1003,9 +995,7 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
                         <EndChapterCard series={series} seriesSlug={seriesSlug} nextChapter={nextChapter} navigateTo={navigateTo} appSettings={appSettings} />
                     </div>
                     <div id="comments-section" className="page-container" style={{ marginTop: 40, maxWidth: 800, margin: '40px auto 0', paddingBottom: 120 }}>
-                        <Suspense fallback={<div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>Yorumlar yükleniyor...</div>}>
-                            <CommentSection chapterId={chapterId} seriesId={series.id} />
-                        </Suspense>
+                        <CommentSection chapterId={chapterId} seriesId={series.id} />
                     </div>
                 </div>
             ) : isMangaMode ? (
@@ -1016,16 +1006,9 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
                         </div>
                     ) : (
                         <div className="manga-viewport" onClick={handleReaderTap}>
-                            {/* Navigation Touch Zones
-                                RTL manga: Story flows RIGHT→LEFT, so:
-                                  - Clicking LEFT area = advance story (goNextPage)
-                                  - Clicking RIGHT area = go back (goPrevPage)
-                                LTR manga: Story flows LEFT→RIGHT, so:
-                                  - Clicking LEFT area = go back (goPrevPage)
-                                  - Clicking RIGHT area = advance story (goNextPage)
-                            */}
-                            <div className="manga-nav-area left" onClick={(e) => { e.stopPropagation(); mangaDirection === 'rtl' ? goNextPage() : goPrevPage(); }} />
-                            <div className="manga-nav-area right" onClick={(e) => { e.stopPropagation(); mangaDirection === 'rtl' ? goPrevPage() : goNextPage(); }} />
+                            {/* Navigation Touch Zones */}
+                            <div className="manga-nav-area left" onClick={(e) => { e.stopPropagation(); mangaDirection === 'rtl' ? goPrevPage() : goNextPage(); }} />
+                            <div className="manga-nav-area right" onClick={(e) => { e.stopPropagation(); mangaDirection === 'rtl' ? goNextPage() : goPrevPage(); }} />
                             <div className="manga-nav-area center" onClick={handleReaderTap} />
                             
                             {pages[currentPageIndex] && (
@@ -1050,9 +1033,7 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
                     {!showEndCard && (
                         <div id="comments-section" className="page-container" style={{ marginTop: 40, maxWidth: 800, margin: '40px auto 0', padding: '0 20px', paddingBottom: 120 }}>
                             <ReaderSupportCard appSettings={appSettings} />
-                            <Suspense fallback={<div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>Yorumlar yükleniyor...</div>}>
-                                <CommentSection chapterId={chapterId} seriesId={series.id} />
-                            </Suspense>
+                            <CommentSection chapterId={chapterId} seriesId={series.id} />
                         </div>
                     )}
                 </div>
@@ -1090,9 +1071,7 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
                     </div>
 
                     <div id="comments-section" className="page-container" style={{ marginTop: 40, paddingBottom: 120 }}>
-                        <Suspense fallback={<div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>Yorumlar yükleniyor...</div>}>
-                            <CommentSection chapterId={chapterId} seriesId={series.id} />
-                        </Suspense>
+                        <CommentSection chapterId={chapterId} seriesId={series.id} />
                     </div>
                 </div>
             )}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getVerifiedUser, hasAdminPanelAccess } from '@/lib/auth';
+import { getVerifiedUser } from '@/lib/auth';
 
 export async function GET(request) {
     try {
@@ -8,7 +8,7 @@ export async function GET(request) {
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });
         const { user } = result;
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
         }
 

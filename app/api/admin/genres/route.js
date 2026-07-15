@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getVerifiedUser, hasAdminPanelAccess } from '@/lib/auth';
+import { getVerifiedUser } from '@/lib/auth';
 
 // Varsayılan türler listesi (admin paneldeki GENRE_TR ile senkron tutulmalı)
 export const DEFAULT_GENRES = [
@@ -35,7 +35,7 @@ export async function GET(request) {
         if (isAdmin) {
             try {
                 const result = getVerifiedUser(request, db);
-                isAdminUser = !result.error && hasAdminPanelAccess(result.user, db);
+                isAdminUser = !result.error && ['admin', 'manager'].includes(result.user?.role);
             } catch {}
         }
 
@@ -112,7 +112,7 @@ export async function POST(request) {
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });
         const { user } = result;
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
         }
 

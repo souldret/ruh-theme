@@ -127,7 +127,6 @@ export default function CommentSection({ chapterId, seriesId }) {
     const [loadingMore, setLoadingMore] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [replySubmitting, setReplySubmitting] = useState(false);
-    const [customRoles, setCustomRoles] = useState([]);
 
     // Series Reactions Widget
     const [seriesReactCounts, setSeriesReactCounts] = useState({});
@@ -190,13 +189,6 @@ export default function CommentSection({ chapterId, seriesId }) {
 
     useEffect(() => {
         getAppSettings().then(settings => setAppSettings(settings)).catch(() => {});
-    }, []);
-
-    useEffect(() => {
-        fetch('/api/admin/users?action=list-custom-roles', { credentials: 'include' })
-            .then(r => r.ok ? r.json() : null)
-            .then(data => { if (data?.roles) setCustomRoles(data.roles); })
-            .catch(() => {});
     }, []);
 
 useEffect(() => {
@@ -404,9 +396,7 @@ useEffect(() => {
     }
 
     async function handlePin(commentId) {
-        const builtinCanPin = user && (user.role === 'admin' || user.role === 'manager');
-        const customCanPin = user && customRoles.some(r => r.name === user.role);
-        if (!user || (!builtinCanPin && !customCanPin)) return;
+        if (!user || (user.role !== 'admin' && user.role !== 'manager')) return;
         try {
             const res = await authFetch(`/api/comments/${commentId}/pin`, { method: 'PUT' });
             const data = await res.json();
@@ -590,19 +580,14 @@ useEffect(() => {
 
     function renderComment(c, isReply = false) {
         const isOwner = user && c.user_id === user.id;
-        const isAdmin = user && (user.role === 'admin' || user.role === 'manager' || customRoles.some(r => r.name === user.role));
+        const isAdmin = user && (user.role === 'admin' || user.role === 'manager');
         const badge = getRankBadgeParams(c.leaderboard_rank);
         const replyCount = c.replies ? c.replies.length : c.reply_count;
         const isShown = shownReplies.has(c.id);
         const cultivation = getCultivationData(c.yomi_points || 0);
         const userAvatar = (!c.avatar_url || c.avatar_url === '/default-avatar.png') ? null : c.avatar_url;
         const isRevealed = revealedSpoilers.has(c.id);
-        const builtinOfficialRoles = ['admin', 'manager'];
-        const isCustomOfficial = customRoles.some(r => r.name === c.role);
-        const isOfficial = builtinOfficialRoles.includes(c.role) || isCustomOfficial;
-        const officialLabel = isCustomOfficial
-            ? (customRoles.find(r => r.name === c.role)?.label || 'Yetkili')
-            : 'Yetkili';
+        const isOfficial = c.role === 'admin' || c.role === 'manager';
 
         return (
             <div key={c.id} className={`${isReply ? "asura-reply-row" : "asura-comment-row"} ${isOfficial ? "official-comment" : ""} ${c.is_pinned ? "pinned-comment" : ""}`}>
@@ -641,15 +626,15 @@ useEffect(() => {
                                     textTransform: 'uppercase', letterSpacing: '0.5px'
                                 }}>
                                     <ShieldIcon />
-                                    {officialLabel}
+                                    Yetkili
                                 </span>
                             )}
+                            <span className="asura-comment-time">{timeAgo(c.created_at)}</span>
                             {!!c.is_pinned && (
                                 <span className="pinned-badge">
                                     <PinIcon /> Sabitlendi
                                 </span>
                             )}
-                            <span className="asura-comment-time">{timeAgo(c.created_at)}</span>
                             {c.paragraph_index !== null && c.paragraph_index !== undefined && (
                                 <span style={{
                                     display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -866,24 +851,21 @@ useEffect(() => {
                     padding: 16px !important;
                     margin: 12px 0 !important;
                 }
-                /* Sabitlenmiş rozeti — ismin yanında, satır içi */
+                /* Sabitlenmiş rozeti */
                 .pinned-badge {
                     display: inline-flex;
                     align-items: center;
-                    gap: 3px;
-                    font-size: 0.62rem;
-                    font-weight: 700;
+                    gap: 4px;
+                    font-size: 0.65rem;
+                    font-weight: 800;
                     text-transform: uppercase;
-                    letter-spacing: 0.5px;
+                    letter-spacing: 0.6px;
                     color: #fff;
                     background: var(--accent);
                     border: none;
-                    padding: 2px 7px;
-                    border-radius: 8px;
-                    flex-shrink: 0;
-                    white-space: nowrap;
-                    vertical-align: middle;
-                    line-height: 1.5;
+                    padding: 3px 10px;
+                    border-radius: 12px;
+                    margin-left: 8px;
                 }
                 /* Sabitlenmiş yorumda içerik alanı */
                 .pinned-comment .asura-comment-content { 
@@ -1206,15 +1188,15 @@ useEffect(() => {
             {/* Global Glassmorphism Styles for Comments */}
             <style jsx global>{`
                 .asura-comment-row {
-                    background: rgba(255, 255, 255, 0.03);
-                    backdrop-filter: blur(16px);
-                    -webkit-backdrop-filter: blur(16px);
+                    background: rgba(30, 30, 35, 0.6);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
                     border: 1px solid rgba(255, 255, 255, 0.08);
                     border-radius: 12px;
                     padding: 16px;
                     margin-bottom: 12px;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-                    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+                    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+                    transition: transform 0.2s ease, border-color 0.2s ease;
                 }
                 .asura-comment-row:hover {
                     border-color: rgba(255,255,255,0.15);
@@ -1228,16 +1210,16 @@ useEffect(() => {
                     border-color: rgba(239, 68, 68, 0.5);
                 }
                 .asura-reply-row {
-                    background: rgba(255, 255, 255, 0.015);
-                    backdrop-filter: blur(16px);
-                    -webkit-backdrop-filter: blur(16px);
+                    background: rgba(40, 40, 45, 0.5);
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
                     border: 1px solid rgba(255, 255, 255, 0.05);
                     border-radius: 10px;
                     padding: 12px;
                     margin-top: 8px;
                     margin-bottom: 8px;
                     margin-left: 20px;
-                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
                 }
                 .asura-reply-row.official-comment {
                     background: rgba(239, 68, 68, 0.1);

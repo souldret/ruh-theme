@@ -1,8 +1,7 @@
 'use client';
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import Image from 'next/image';
 import SeriesCard from '@/components/SeriesCard';
 import GlassmorphismCard from '@/components/UpdateCards/GlassmorphismCard';
 import MostReadWidget from '@/components/MostReadWidget';
@@ -98,117 +97,6 @@ function toTitleCaseTr(str) {
     }).join(' ');
 }
 
-// Performans: fmtCh fonksiyonu bileşen dışında tanımlandı - gereksiz fonksiyon oluşturmayı önler
-function fmtCh(n) {
-    const num = Number(n);
-    if (isNaN(num)) return n;
-    return num % 1 === 0 ? String(Math.floor(num)) : String(num);
-}
-
-// Performans: timeAgo fonksiyonu bileşen dışında tanımlandı
-function timeAgo(date, appSettings = {}) {
-    if (!date) return '';
-    const d = typeof date === 'string' && !date.endsWith('Z') ? date + 'Z' : date;
-    const seconds = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
-    const justNow = appSettings.lang_time_just_now || 'şimdi';
-    const minAgo = appSettings.lang_time_min_ago || ' dk önce';
-    const hourAgo = appSettings.lang_time_hour_ago || ' sa önce';
-    const dayAgo = appSettings.lang_time_day_ago || ' gün önce';
-    if (seconds < 60) return justNow;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}${minAgo}`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}${hourAgo}`;
-    if (seconds < 2592000) return `${Math.floor(seconds / 86400)}${dayAgo}`;
-    return new Date(date).toLocaleDateString('tr-TR');
-}
-
-// Performans: Memoized ChapterRow bileşeni - gereksiz re-render'ları önler
-const ChapterRow = memo(function ChapterRow({ ch, seriesSlug, showNewBadge, hasCustomTitle, appSettings, isNew, timeAgoStr }) {
-    const chWord = appSettings?.lang_chapter_word || 'Bölüm';
-    const chPrefix = appSettings?.lang_chapter_prefix || 'Bölüm';
-
-    return (
-        <Link href={`/seri/${seriesSlug}/bolum/${ch.chapter_number}`} className={`holo-chapter-row${isNew ? ' is-new' : ''}`} prefetch={false} suppressHydrationWarning>
-            <span className="name" style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                <span style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {hasCustomTitle
-                        ? `${chPrefix} ${fmtCh(ch.chapter_number)} - ${ch.title}`
-                        : `${chWord} ${fmtCh(ch.chapter_number)}`}
-                </span>
-                {isNew && showNewBadge && (
-                    <span className="new-chapter-badge-pill" title="Son 24 saatte yüklendi!">
-                        {appSettings?.lang_new || 'YENİ'}
-                    </span>
-                )}
-            </span>
-            <span className="time" style={{ flexShrink: 0, marginLeft: '8px' }} suppressHydrationWarning>{timeAgoStr}</span>
-        </Link>
-    );
-});
-
-// Performans: Memoized UpdateCard bileşeni - her kart için ayrı memo
-const UpdateCard = memo(function UpdateCard({ s, mounted, user, appSettings, onChapterTimeAgo, CardComponent }) {
-    const seriesSlug = s.slug || s.id;
-
-    return (
-        <div style={{ position: 'relative', minWidth: 0, isolation: 'isolate' }}>
-            {/* Yetişkin içerik — giriş yapmamış kullanıcılar için blur overlay */}
-            {mounted && s.is_adult === 1 && !user && (
-                <a href="/login" style={{
-                    position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center', gap: 6,
-                    background: 'rgba(0,0,0,0.60)', borderRadius: 10, textDecoration: 'none',
-                    color: '#fff', fontSize: '0.78rem', fontWeight: 700,
-                    letterSpacing: '0.04em'
-                }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Giriş Yapın
-                </a>
-            )}
-            <div style={mounted && s.is_adult === 1 && !user ? { filter: 'blur(5px)', pointerEvents: 'none', userSelect: 'none', borderRadius: 10, overflow: 'hidden', minWidth: 0, willChange: 'filter' } : { minWidth: 0 }}>
-                <CardComponent
-                    href={`/seri/${seriesSlug}`}
-                    coverUrl={s.cover_url || '/demo/cover1.jpg'}
-                    title={s.title}
-                    type={formatType(s.type)}
-                    status={STATUS_TR[s.status] || s.status}
-                    statusKey={s.status}
-                >
-                    {Array.isArray(s.chapters) && s.chapters.length > 0 && s.chapters.map(ch => {
-                        const hasCustomTitle = ch.title && !isDefaultTitle(ch.title, ch.chapter_number);
-                        const isNew = (() => {
-                            if (appSettings?.show_new_chapter_badge === '0') return false;
-                            if (ch.is_new === 1 || ch.is_new === true) return true;
-                            if (!ch.created_at) return false;
-                            const dateStr = String(ch.created_at);
-                            const normalized = dateStr.includes('T') ? (dateStr.endsWith('Z') ? dateStr : dateStr + 'Z') : dateStr.replace(' ', 'T') + 'Z';
-                            const ts = new Date(normalized).getTime();
-                            if (isNaN(ts)) return false;
-                            return (Date.now() - ts) < 24 * 60 * 60 * 1000;
-                        })();
-                        const timeAgoStr = onChapterTimeAgo ? onChapterTimeAgo(ch.created_at) : '';
-
-                        return (
-                            <ChapterRow
-                                key={ch.id}
-                                ch={ch}
-                                seriesSlug={seriesSlug}
-                                showNewBadge={appSettings?.show_new_chapter_badge !== '0'}
-                                hasCustomTitle={hasCustomTitle}
-                                appSettings={appSettings}
-                                isNew={isNew}
-                                timeAgoStr={timeAgoStr}
-                            />
-                        );
-                    })}
-                    {(!s.chapters || s.chapters.length === 0) && (
-                        <span className="holo-chapter-row" style={{ opacity: 0.5 }}>{appSettings?.lang_no_chapters_yet || 'Henüz bölüm yok'}</span>
-                    )}
-                </CardComponent>
-            </div>
-        </div>
-    );
-});
-
 export default function HomePage() {
   const { user, authFetch } = useAuth();
   const [popularSeries, setPopularSeries] = useState([]);
@@ -230,15 +118,6 @@ export default function HomePage() {
   const [topLoading, setTopLoading] = useState(false);
   const [stats, setStats] = useState({ series: 0, chapters: 0, users: 0 });
   const [mounted, setMounted] = useState(false);
-
-  // Donation countdown — ref kullanıyoruz, gereksiz re-render engellenir
-  const donationNowRef = useRef(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => { donationNowRef.current = Date.now(); }, 30000);
-    return () => clearInterval(t);
-  }, []);
-  // Render sırasında her zaman güncel zamanı oku
-  const donationNow = donationNowRef.current;
 
   // Bug Report Modal State
   const [showBugModal, setShowBugModal] = useState(false);
@@ -262,12 +141,10 @@ export default function HomePage() {
     try {
       const res = await fetch('/api/stats');
       const data = await res.json();
-      const newSeries = data.series || 0;
-      const newChapters = data.chapters || 0;
-      const newUsers = data.users || 0;
-      setStats(prev => {
-        if (prev.series === newSeries && prev.chapters === newChapters && prev.users === newUsers) return prev;
-        return { series: newSeries, chapters: newChapters, users: newUsers };
+      setStats({
+        series: data.series || 0,
+        chapters: data.chapters || 0,
+        users: data.users || 0,
       });
     } catch {}
   }, []);
@@ -284,7 +161,7 @@ export default function HomePage() {
       try {
         const [popRes, updRes, trendRes, edRes, annRes, settRes] = await Promise.all([
           fetch('/api/series?sort=popular&limit=5', { cache: 'no-store' }),
-          fetch(`/api/series/latest-updates?page=1&adult=${showAdult ? '1' : '0'}`, { cache: 'no-store' }),
+          fetch('/api/series/latest-updates?limit=16&page=1', { cache: 'no-store' }),
           fetch('/api/series/trending', { cache: 'no-store' }),
           fetch('/api/series/editor-pick', { cache: 'no-store' }),
           fetch('/api/announcements?active=true', { cache: 'no-store' }),
@@ -330,7 +207,7 @@ export default function HomePage() {
     if (updatesPageLoading || targetPage < 1 || targetPage > updatesTotalPages) return;
     setUpdatesPageLoading(true);
     try {
-      const res = await fetch(`/api/series/latest-updates?page=${targetPage}&adult=${showAdult ? '1' : '0'}`);
+      const res = await fetch(`/api/series/latest-updates?page=${targetPage}`);
       const data = await res.json();
       if (data.updates) {
         setLatestUpdates(data.updates);
@@ -345,31 +222,10 @@ export default function HomePage() {
     finally { setUpdatesPageLoading(false); }
   }
 
-  // Adult filtresi değişince sayfa 1'den yeniden çek
-  // useRef ile ilk render atlanır — fetchData() zaten başlangıçta çalışıyor
-  const isFirstAdultRender = useRef(true);
-  useEffect(() => {
-    if (isFirstAdultRender.current) { isFirstAdultRender.current = false; return; }
-    if (!mounted) return;
-    async function refetchUpdates() {
-      setUpdatesPageLoading(true);
-      try {
-        const res = await fetch(`/api/series/latest-updates?page=1&adult=${showAdult ? '1' : '0'}`, { cache: 'no-store' });
-        const data = await res.json();
-        if (data.updates) {
-          setLatestUpdates(data.updates);
-          setUpdatesTotalPages(data.totalPages || 1);
-          setUpdatesTotal(data.total || 0);
-          setUpdatesPage(1);
-        }
-      } catch {}
-      finally { setUpdatesPageLoading(false); }
-    }
-    refetchUpdates();
-  }, [showAdult]);
-
-  // Filtreleme artık server tarafında yapıldığından tüm güncellemeler gösterilir
-  const filteredUpdates = latestUpdates;
+  // Memoize filtered updates to avoid re-filtering on every render
+  const filteredUpdates = useMemo(() => {
+    return latestUpdates.filter(s => showAdult ? !!s.is_adult : !s.is_adult);
+  }, [latestUpdates, showAdult]);
 
   // Sadece Glassmorphism (Cam Efekti) kart tasarımı kullanılıyor
   const CardComponent = GlassmorphismCard;
@@ -391,11 +247,27 @@ export default function HomePage() {
     try { return Array.isArray(g) ? g : JSON.parse(g || '[]'); } catch { return []; }
   }
 
-  // Performans: timeAgo helper - ChapterRow için ön-hesaplama
-  const getChapterTimeAgo = useCallback((date) => {
-    if (!date || !mounted) return '';
-    return timeAgo(date, appSettings);
-  }, [mounted, appSettings.lang_time_just_now, appSettings.lang_time_min_ago, appSettings.lang_time_hour_ago, appSettings.lang_time_day_ago]);
+  // Format chapter number: shows "1" instead of "1.0", "1.5" for decimals
+  function fmtCh(n) {
+    const num = Number(n);
+    if (isNaN(num)) return n;
+    return num % 1 === 0 ? String(Math.floor(num)) : String(num);
+  }
+
+  function timeAgo(date) {
+    if (!date) return '';
+    const d = typeof date === 'string' && !date.endsWith('Z') ? date + 'Z' : date;
+    const seconds = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
+    const justNow = appSettings.lang_time_just_now || 'şimdi';
+    const minAgo = appSettings.lang_time_min_ago || ' dk önce';
+    const hourAgo = appSettings.lang_time_hour_ago || ' sa önce';
+    const dayAgo = appSettings.lang_time_day_ago || ' gün önce';
+    if (seconds < 60) return justNow;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}${minAgo}`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}${hourAgo}`;
+    if (seconds < 2592000) return `${Math.floor(seconds / 86400)}${dayAgo}`;
+    return new Date(date).toLocaleDateString('tr-TR');
+  }
 
   async function handleBugSubmit(e) {
     e.preventDefault();
@@ -434,6 +306,527 @@ export default function HomePage() {
   return (
     <>
     <div className="home-wrapper">
+      <style dangerouslySetInnerHTML={{ __html: `
+        /* ── Popular Slider — tek kart transform slideshow ── */
+        .pop-slider-section {
+          position: relative;
+          width: 100vw;
+          margin-left: calc(-50vw + 50%);
+          margin-bottom: 20px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 60px 0;
+          overflow: hidden;
+        }
+        .pop-slider-bg-blur {
+          position: absolute;
+          inset: -20px;
+          background-size: cover;
+          background-position: center;
+          filter: blur(25px) brightness(0.4);
+          transform: scale(1.1);
+          z-index: 0;
+          transition: background-image 0.5s ease;
+        }
+        .pop-slider-viewport {
+          position: relative;
+          z-index: 1;
+          width: 260px;
+          max-width: 100%;
+          overflow: hidden;
+          border-radius: 14px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+        }
+        .pop-slider-track {
+          display: flex;
+          transition: transform 0.5s cubic-bezier(0.4,0,0.2,1);
+          will-change: transform;
+        }
+        /* her slayt */
+        .pop-slide {
+          flex: 0 0 100%;
+          position: relative;
+          aspect-ratio: 3 / 4;
+          overflow: hidden;
+          background: var(--bg-card);
+          display: block;
+          text-decoration: none;
+        }
+        .pop-slide img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        /* gradient alt */
+        .pop-slide-overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            to bottom,
+            transparent 45%,
+            rgba(0,0,0,0.65) 75%,
+            rgba(0,0,0,0.92) 100%
+          );
+          pointer-events: none;
+        }
+        /* puan — sol üst */
+        .pop-slide-rating {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: rgba(0,0,0,0.70);
+          backdrop-filter: blur(5px);
+          border: 1px solid rgba(245,158,11,0.3);
+          border-radius: 20px;
+          padding: 4px 9px;
+          font-size: 0.80rem;
+          font-weight: 700;
+          color: #f59e0b;
+          z-index: 5;
+        }
+        /* seri adı — alt orta */
+        .pop-slide-title {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: 10px 12px 14px;
+          text-align: center;
+          z-index: 5;
+          font-size: 0.95rem;
+          font-weight: 800;
+          color: #fff;
+          line-height: 1.3;
+          text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        /* ok butonları — viewport içinde */
+        .pop-nav-btn {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: rgba(8,8,12,0.78);
+          backdrop-filter: blur(6px);
+          border: 1px solid rgba(255,255,255,0.14);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 10;
+          transition: background 0.2s ease, transform 0.2s ease;
+        }
+        .pop-nav-btn:hover {
+          background: var(--accent, #b91c1c);
+          border-color: var(--accent, #b91c1c);
+          transform: translateY(-50%) scale(1.1);
+        }
+        .pop-nav-btn.prev { left: 8px; }
+        .pop-nav-btn.next { right: 8px; }
+        /* nokta göstergesi */
+        .pop-dots {
+          display: flex;
+          justify-content: center;
+          gap: 6px;
+          margin-top: 10px;
+        }
+        .pop-dot {
+          height: 5px;
+          border-radius: 10px;
+          background: rgba(255,255,255,0.22);
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          transition: all 0.25s ease;
+        }
+        .pop-dot.active { width: 22px; background: var(--accent, #b91c1c); }
+        .pop-dot:not(.active) { width: 6px; }
+        /* iskelet */
+        .pop-slider-skel {
+          width: 260px;
+          max-width: 100%;
+          aspect-ratio: 3 / 4;
+          border-radius: 14px;
+          background: linear-gradient(90deg, var(--bg-card) 25%, rgba(255,255,255,0.04) 50%, var(--bg-card) 75%);
+          background-size: 200% 100%;
+          animation: shimmer 1.5s infinite linear;
+          margin-bottom: 12px;
+        }
+        @keyframes shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+
+        /* ── Banners ───────────────────────────────────────── */
+        .banners-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          width: 100%;
+          margin-top: 10px;
+        }
+        .banners-grid.single-banner {
+          display: flex;
+          justify-content: center;
+        }
+        .banners-grid.single-banner .banner-card {
+          width: 100%;
+          max-width: 600px;
+        }
+        .banner-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 20px;
+          border-radius: 12px;
+          background: var(--bg-card, #1c1c24);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+          transition: transform 0.2s ease, border-color 0.2s ease;
+          gap: 14px;
+          text-decoration: none;
+          cursor: pointer;
+        }
+        .banner-card:hover {
+          transform: translateY(-2px);
+          border-color: rgba(255,255,255,0.12);
+        }
+        .banner-card-info {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          flex: 1;
+          min-width: 0;
+        }
+        .banner-card-title {
+          font-size: 0.92rem;
+          font-weight: 800;
+          color: #fff;
+          margin: 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .banner-card-desc {
+          font-size: 0.72rem;
+          color: var(--text-muted, #94a3b8);
+          margin: 0;
+          line-height: 1.35;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .banner-card-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-size: 0.82rem;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: none;
+          border: none;
+          white-space: nowrap;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+        .banner-card-btn:hover { opacity: 0.88; }
+        .discord-banner {
+          background: linear-gradient(135deg, rgba(88, 101, 242, 0.15) 0%, var(--bg-card, #1c1c24) 100%);
+          border: 1px solid rgba(88, 101, 242, 0.2);
+          box-shadow: 0 4px 20px rgba(88, 101, 242, 0.05);
+        }
+        .discord-banner:hover {
+          border-color: rgba(88, 101, 242, 0.4) !important;
+          box-shadow: 0 6px 25px rgba(88, 101, 242, 0.15);
+        }
+        .discord-btn { background: #5865F2; color: #fff; box-shadow: 0 4px 12px rgba(88, 101, 242, 0.3); }
+        .report-banner {
+          background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, var(--bg-card, #1c1c24) 100%);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          box-shadow: 0 4px 20px rgba(239, 68, 68, 0.05);
+        }
+        .report-banner:hover {
+          border-color: rgba(239, 68, 68, 0.4) !important;
+          box-shadow: 0 6px 25px rgba(239, 68, 68, 0.15);
+        }
+        .report-btn { background: #ef4444; color: #fff; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+
+        @media (max-width: 640px) {
+          .pop-slider-viewport { width: 200px; }
+          .pop-slider-skel { width: 200px; }
+          .pop-slide-title { font-size: 0.82rem; }
+          .banners-grid { grid-template-columns: 1fr; gap: 10px; }
+          .banner-card { padding: 12px 14px; gap: 10px; }
+          .banner-card-title { font-size: 0.85rem; }
+          .banner-card-desc { font-size: 0.68rem; }
+          .banner-card-btn { padding: 7px 12px; font-size: 0.78rem; }
+        }
+        @media (max-width: 380px) {
+          .pop-slider-viewport { width: 170px; }
+          .pop-slider-skel { width: 170px; }
+          .banner-card-btn { padding: 6px 10px; font-size: 0.74rem; }
+        }
+
+        /* Responsive override: show multiple popular cards instead of one oversized slide */
+        .pop-slider-section {
+          align-items: stretch;
+          margin-bottom: 10px;
+        }
+        .pop-slider-viewport {
+          width: 100% !important;
+          overflow: visible;
+          border-radius: 0;
+          box-shadow: none;
+        }
+        .pop-slider-track {
+          gap: 16px;
+          width: 100%;
+          overflow-x: auto;
+          overflow-y: hidden;
+          scroll-behavior: smooth;
+          scroll-snap-type: x mandatory;
+          scrollbar-width: none;
+          padding: 4px 2px 12px;
+        }
+        .pop-slider-track::-webkit-scrollbar { display: none; }
+        .pop-slide {
+          flex: 0 0 calc((100% - 64px) / 5);
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.06);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.28);
+          scroll-snap-align: start;
+          transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .pop-slide:hover {
+          transform: translateY(-4px);
+          border-color: rgba(239,68,68,0.45);
+          box-shadow: 0 14px 28px rgba(0,0,0,0.38);
+        }
+        .pop-nav-btn.prev { left: -18px; }
+        .pop-nav-btn.next { right: -18px; }
+        .pop-slider-skel {
+          width: 100% !important;
+          height: clamp(180px, 24vw, 300px);
+          aspect-ratio: auto;
+        }
+        @media (max-width: 1024px) {
+          .pop-slide { flex-basis: calc((100% - 32px) / 3); }
+          .pop-nav-btn.prev { left: -10px; }
+          .pop-nav-btn.next { right: -10px; }
+        }
+        @media (max-width: 640px) {
+          .pop-slider-track { gap: 12px; padding-bottom: 10px; }
+          .pop-slide { flex-basis: calc((100% - 12px) / 2); }
+          .pop-nav-btn { display: none; }
+          .pop-slider-skel { height: 240px; }
+        }
+        @media (max-width: 380px) {
+          .pop-slide { flex-basis: 78%; }
+          .pop-slider-skel { height: 220px; }
+        }
+
+        /* Spotlight deck slider: active cover is larger, side covers stay visible */
+        .pop-slider-section {
+          align-items: center;
+          margin-bottom: 22px;
+        }
+        .pop-slider-viewport {
+          width: 100% !important;
+          height: clamp(330px, 36vw, 430px);
+          overflow: hidden;
+          border-radius: 0;
+          box-shadow: none;
+          isolation: isolate;
+        }
+        .pop-slider-viewport::before {
+          content: '';
+          position: absolute;
+          inset: 12% 0 0;
+          background: radial-gradient(circle at 50% 45%, rgba(var(--accent-rgb), 0.24), rgba(8,8,12,0.88) 68%);
+          filter: blur(6px);
+          z-index: 0;
+          pointer-events: none;
+        }
+        .pop-slider-track {
+          position: relative;
+          height: 100%;
+          overflow: hidden;
+          display: block;
+          padding: 0;
+          scroll-snap-type: none;
+        }
+        .pop-slide {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: min(34vw, 250px);
+          min-width: 0;
+          max-width: none;
+          flex: none;
+          aspect-ratio: 3 / 4.2;
+          border-radius: 8px;
+          opacity: 0;
+          pointer-events: none;
+          transform: translate(-50%, -50%) scale(0.72);
+          transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s ease, filter 0.32s ease;
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: 0 22px 48px rgba(0,0,0,0.54);
+        }
+        .pop-slide.active {
+          opacity: 1;
+          z-index: 4;
+          pointer-events: auto;
+          transform: translate(-50%, -50%) scale(1);
+          filter: none;
+        }
+        .pop-slide.prev,
+        .pop-slide.next {
+          opacity: 0.72;
+          z-index: 2;
+          pointer-events: auto;
+          filter: saturate(0.82) brightness(0.78);
+        }
+        .pop-slide.prev {
+          transform: translate(calc(-50% - min(28vw, 260px)), -50%) scale(0.64);
+        }
+        .pop-slide.next {
+          transform: translate(calc(-50% + min(28vw, 260px)), -50%) scale(0.64);
+        }
+        .pop-slide.hidden {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.54);
+          pointer-events: none;
+        }
+        .pop-slide:hover {
+          border-color: rgba(255,255,255,0.16);
+          box-shadow: 0 26px 54px rgba(0,0,0,0.62);
+        }
+        .pop-slide.active:hover {
+          transform: translate(-50%, -50%) scale(1.025);
+        }
+        .pop-slide.prev:hover {
+          transform: translate(calc(-50% - min(28vw, 260px)), -50%) scale(0.67);
+        }
+        .pop-slide.next:hover {
+          transform: translate(calc(-50% + min(28vw, 260px)), -50%) scale(0.67);
+        }
+        .pop-slider-track:not(:has(.pop-slide.active)) .pop-slide:first-child {
+          opacity: 1;
+          z-index: 4;
+          pointer-events: auto;
+          transform: translate(-50%, -50%) scale(1);
+          filter: none;
+        }
+        .pop-slider-track:not(:has(.pop-slide.active)) .pop-slide:nth-child(2),
+        .pop-slider-track:not(:has(.pop-slide.active)) .pop-slide:last-child {
+          opacity: 0.72;
+          z-index: 2;
+          pointer-events: auto;
+          filter: saturate(0.82) brightness(0.78);
+        }
+        .pop-slider-track:not(:has(.pop-slide.active)) .pop-slide:nth-child(2) {
+          transform: translate(calc(-50% + min(28vw, 260px)), -50%) scale(0.64);
+        }
+        .pop-slider-track:not(:has(.pop-slide.active)) .pop-slide:last-child {
+          transform: translate(calc(-50% - min(28vw, 260px)), -50%) scale(0.64);
+        }
+        .pop-slide-title {
+          text-align: left;
+          padding: 0 12px 12px;
+          font-size: 0.84rem;
+        }
+        .pop-slide-rating {
+          top: 8px;
+          left: 8px;
+          border-radius: 4px;
+          padding: 3px 7px;
+        }
+        .pop-nav-btn.prev { left: 14px; }
+        .pop-nav-btn.next { right: 14px; }
+        .pop-dots {
+          margin-top: 2px;
+        }
+
+        @media (max-width: 640px) {
+          .pop-slider-viewport {
+            height: 300px;
+            width: 100% !important;
+          }
+          .pop-slide {
+            width: min(52vw, 185px);
+          }
+          .pop-slide.prev {
+            transform: translate(calc(-50% - 38vw), -50%) scale(0.60);
+          }
+          .pop-slide.next {
+            transform: translate(calc(-50% + 38vw), -50%) scale(0.60);
+          }
+          .pop-slide.prev:hover {
+            transform: translate(calc(-50% - 38vw), -50%) scale(0.60);
+          }
+          .pop-slide.next:hover {
+            transform: translate(calc(-50% + 38vw), -50%) scale(0.60);
+          }
+          .pop-slider-track:not(:has(.pop-slide.active)) .pop-slide:nth-child(2) {
+            transform: translate(calc(-50% + 38vw), -50%) scale(0.60);
+          }
+          .pop-slider-track:not(:has(.pop-slide.active)) .pop-slide:last-child {
+            transform: translate(calc(-50% - 38vw), -50%) scale(0.60);
+          }
+          .pop-slide-title {
+            font-size: 0.76rem;
+          }
+          .pop-dots {
+            margin-top: 0;
+          }
+          /* Re-enable nav buttons (hidden by multi-card override) */
+          .pop-nav-btn {
+            display: flex !important;
+            width: 30px;
+            height: 30px;
+          }
+          .pop-nav-btn.prev { left: 6px; }
+          .pop-nav-btn.next { right: 6px; }
+        }
+
+        @media (max-width: 768px) {
+          .stats-bar { margin-top: 24px !important; }
+          .stats-bar-inner { padding: 0 12px !important; }
+          .stats-bar .stat-item { padding: 14px 10px !important; }
+          .stats-bar .stat-number { font-size: 1.05rem !important; }
+          .stats-bar .stat-label { font-size: 0.6rem !important; }
+          .stats-bar .stat-icon { width: 28px !important; height: 28px !important; }
+          .stats-bar .stat-sep { display: none !important; }
+        }
+        @media (max-width: 480px) {
+          .stats-bar-inner {
+            flex-direction: row !important;
+            padding: 0 8px !important;
+          }
+          .stats-bar .stat-item { padding: 12px 6px !important; gap: 6px !important; }
+          .stats-bar .stat-icon { display: none !important; }
+          .stats-bar .stat-number { font-size: 1rem !important; }
+        }
+
+        @keyframes flame-bounce {
+          0% { transform: translateY(0) scale(1); }
+          100% { transform: translateY(-2px) scale(1.15); }
+        }
+      ` }} />
       {/* Popular Series — Devasa Hero Slider */}
       <div className="page-container page-section pt-0">
         {(loading || !mounted) && <div className="pop-slider-skel" />}
@@ -525,40 +918,42 @@ export default function HomePage() {
                 const isPctMode = manualPct > 0;
                 const isComplete = goalPct >= 100;
                 const hasAnyBtn = appSettings.paypal_url || appSettings.kofi_url || appSettings.kreosus_url;
-
-                // ── Geri sayım hesaplama ──
-                const deadlineRaw = appSettings.donation_goal_deadline || '';
-                let countdown = null;
-                if (deadlineRaw) {
-                    const deadlineMs = new Date(deadlineRaw).getTime();
-                    const nowMs = donationNow || Date.now();
-                    const diffMs = deadlineMs - nowMs;
-                    if (diffMs > 0) {
-                        const totalSecs = Math.floor(diffMs / 1000);
-                        const days  = Math.floor(totalSecs / 86400);
-                        const hours = Math.floor((totalSecs % 86400) / 3600);
-                        const mins  = Math.floor((totalSecs % 3600) / 60);
-                        countdown = { days, hours, mins, isUrgent: days < 3 };
-                    } else {
-                        countdown = { days: 0, hours: 0, mins: 0, isUrgent: true, expired: true };
-                    }
-                }
                 
                 return (
                 <section className="page-container page-section pt-0" style={{ paddingBottom: '16px' }}>
-                    
-                    <div className={`dn-card${countdown?.isUrgent ? ' dn-urgent' : ''}`}>
-                        <div style={{ position: 'absolute', top: '-50%', right: '-10%', width: '150px', height: '150px', background: `radial-gradient(circle, ${countdown?.isUrgent ? 'rgba(239,68,68,0.15)' : 'rgba(139,92,246,0.15)'} 0%, transparent 70%)`, filter: 'blur(30px)', pointerEvents: 'none' }} />
-                        <div style={{ position: 'absolute', bottom: '-50%', left: '-10%', width: '150px', height: '150px', background: `radial-gradient(circle, ${countdown?.isUrgent ? 'rgba(239,68,68,0.1)' : 'rgba(59,130,246,0.15)'} 0%, transparent 70%)`, filter: 'blur(30px)', pointerEvents: 'none' }} />
+                    <style>{`
+                        .dn-card { position: relative; background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%); border-radius: 12px; padding: 12px 16px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; }
+                        .dn-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+                        .dn-left { display: flex; gap: 10px; align-items: center; flex: 1 1 auto; }
+                        .dn-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%); display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+                        .dn-icon svg { width: 16px; height: 16px; }
+                        .dn-title { font-size: 0.95rem; font-weight: 800; margin: 0; color: var(--text-primary); }
+                        .dn-desc { margin: 0; color: var(--text-secondary); font-size: 0.75rem; line-height: 1.3; max-width: 300px; display: none; }
+                        .dn-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+                        .dn-btn { padding: 6px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; gap: 4px; text-decoration: none; }
+                        .dn-btn svg { width: 12px; height: 12px; }
+                        .dn-goal-wrap { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.03); margin-top: 10px; }
+                        .dn-goal-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+                        .dn-goal-label { font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 2px; }
+                        .dn-goal-val { font-size: 0.85rem; font-weight: 800; color: var(--text-primary); }
+                        .dn-goal-max { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; }
+                        @media (max-width: 768px) {
+                            .dn-card { padding: 10px; border-radius: 10px; }
+                            .dn-top { flex-direction: column; align-items: stretch; }
+                            .dn-left { flex-direction: row; }
+                            .dn-buttons { flex-direction: row; width: 100%; justify-content: space-between; }
+                            .dn-btn { flex: 1; justify-content: center; }
+                        }
+                    `}</style>
+                    <div className="dn-card">
+                        <div style={{ position: 'absolute', top: '-50%', right: '-10%', width: '150px', height: '150px', background: 'radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none' }} />
+                        <div style={{ position: 'absolute', bottom: '-50%', left: '-10%', width: '150px', height: '150px', background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none' }} />
                         
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column' }}>
                             <div className="dn-top">
                                 <div className="dn-left">
-                                    <div className={`dn-icon${countdown?.isUrgent ? ' dn-icon-urgent' : ''}`}>
-                                        {countdown?.isUrgent
-                                            ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                            : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                                        }
+                                    <div className="dn-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                                     </div>
                                     <div>
                                         <h3 className="dn-title">{appSettings.donation_text || 'Bize Destek Olun!'}</h3>
@@ -607,67 +1002,7 @@ export default function HomePage() {
                                         )}
                                     </div>
                                     <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                                        <div style={{ width: `${goalPct}%`, height: '100%', background: isComplete ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : countdown?.isUrgent ? 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)' : 'linear-gradient(90deg, #8b5cf6 0%, #3b82f6 100%)', borderRadius: '10px' }} />
-                                    </div>
-                                    {countdown && !countdown.expired && (
-                                        <div className="dn-countdown">
-                                            <span className={`dn-countdown-label${countdown.isUrgent ? ' urgent' : ''}`}>
-                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                                Kalan süre:
-                                            </span>
-                                            {countdown.days > 0 && (
-                                                <>
-                                                    <div className={`dn-countdown-unit${countdown.isUrgent ? ' urgent' : ''}`}>
-                                                        <span className={`dn-countdown-num${countdown.isUrgent ? ' urgent' : ''}`}>{countdown.days}</span>
-                                                        <span className="dn-countdown-lbl">gün</span>
-                                                    </div>
-                                                    <span className="dn-countdown-sep">:</span>
-                                                </>
-                                            )}
-                                            <div className={`dn-countdown-unit${countdown.isUrgent ? ' urgent' : ''}`}>
-                                                <span className={`dn-countdown-num${countdown.isUrgent ? ' urgent' : ''}`}>{String(countdown.hours).padStart(2,'0')}</span>
-                                                <span className="dn-countdown-lbl">saat</span>
-                                            </div>
-                                            <span className="dn-countdown-sep">:</span>
-                                            <div className={`dn-countdown-unit${countdown.isUrgent ? ' urgent' : ''}`}>
-                                                <span className={`dn-countdown-num${countdown.isUrgent ? ' urgent' : ''}`}>{String(countdown.mins).padStart(2,'0')}</span>
-                                                <span className="dn-countdown-lbl">dak</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {countdown?.expired && (
-                                        <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#f87171', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                            Kampanya süresi doldu
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            {!goalEnabled && countdown && !countdown.expired && (
-                                <div className="dn-goal-wrap" style={{ marginTop: 10 }}>
-                                    <div className="dn-countdown">
-                                        <span className={`dn-countdown-label${countdown.isUrgent ? ' urgent' : ''}`}>
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                            Kalan süre:
-                                        </span>
-                                        {countdown.days > 0 && (
-                                            <>
-                                                <div className={`dn-countdown-unit${countdown.isUrgent ? ' urgent' : ''}`}>
-                                                    <span className={`dn-countdown-num${countdown.isUrgent ? ' urgent' : ''}`}>{countdown.days}</span>
-                                                    <span className="dn-countdown-lbl">gün</span>
-                                                </div>
-                                                <span className="dn-countdown-sep">:</span>
-                                            </>
-                                        )}
-                                        <div className={`dn-countdown-unit${countdown.isUrgent ? ' urgent' : ''}`}>
-                                            <span className={`dn-countdown-num${countdown.isUrgent ? ' urgent' : ''}`}>{String(countdown.hours).padStart(2,'0')}</span>
-                                            <span className="dn-countdown-lbl">saat</span>
-                                        </div>
-                                        <span className="dn-countdown-sep">:</span>
-                                        <div className={`dn-countdown-unit${countdown.isUrgent ? ' urgent' : ''}`}>
-                                            <span className={`dn-countdown-num${countdown.isUrgent ? ' urgent' : ''}`}>{String(countdown.mins).padStart(2,'0')}</span>
-                                            <span className="dn-countdown-lbl">dak</span>
-                                        </div>
+                                        <div style={{ width: `${goalPct}%`, height: '100%', background: isComplete ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : 'linear-gradient(90deg, #8b5cf6 0%, #3b82f6 100%)', borderRadius: '10px' }} />
                                     </div>
                                 </div>
                             )}
@@ -685,7 +1020,7 @@ export default function HomePage() {
                 <div className="cr-bg" style={{ backgroundImage: `url(${readingHistory[0].cover_url || '/demo/cover1.jpg'})` }} />
                 {/* Kapak */}
                 <div className="cr-cover-wrapper">
-                    <Image src={readingHistory[0].cover_url || '/demo/cover1.jpg'} alt="" fill sizes="80px" className="cr-cover" style={{ objectFit: 'cover' }} />
+                    <img src={readingHistory[0].cover_url || '/demo/cover1.jpg'} alt="" className="cr-cover" />
                 </div>
                 {/* Bilgi */}
                 <div className="cr-info">
@@ -765,71 +1100,142 @@ export default function HomePage() {
               <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner"></div></div>
             ) : (
               <div className="updates-list" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '12px', minWidth: 0, width: '100%' }}>
-                {filteredUpdates.map(s => (
-                  <UpdateCard
-                    key={s.id}
-                    s={s}
-                    mounted={mounted}
-                    user={user}
-                    appSettings={appSettings}
-                    onChapterTimeAgo={getChapterTimeAgo}
-                    CardComponent={CardComponent}
-                  />
-                ))}
+                {filteredUpdates.map(s => {
+                  const seriesSlug = s.slug || s.id;
+                  return (
+                    <div key={s.id} style={{ position: 'relative', minWidth: 0, isolation: 'isolate' }}>
+                    {/* Yetişkin içerik — giriş yapmamış kullanıcılar için blur overlay; mounted sonrası göster */}
+                    {mounted && s.is_adult === 1 && !user && (
+                      <a href="/login" style={{
+                        position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center', gap: 6,
+                        background: 'rgba(0,0,0,0.60)', borderRadius: 10, textDecoration: 'none',
+                        color: '#fff', fontSize: '0.78rem', fontWeight: 700,
+                        letterSpacing: '0.04em'
+                      }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Giriş Yapın
+                      </a>
+                    )}
+                    <div style={mounted && s.is_adult === 1 && !user ? { filter: 'blur(5px)', pointerEvents: 'none', userSelect: 'none', borderRadius: 10, overflow: 'hidden', minWidth: 0, willChange: 'filter' } : { minWidth: 0 }}>
+                    <CardComponent
+                      href={`/seri/${seriesSlug}`}
+                      coverUrl={s.cover_url || '/demo/cover1.jpg'}
+                      title={s.title}
+                      type={formatType(s.type)}
+                      status={STATUS_TR[s.status] || s.status}
+                      statusKey={s.status}
+                    >
+                          {Array.isArray(s.chapters) && s.chapters.length > 0 && s.chapters.map(ch => {
+                            const chWord = appSettings.lang_chapter_word || 'Bölüm';
+                            const chPrefix = appSettings.lang_chapter_prefix || 'Bölüm';
+                            const hasCustomTitle = ch.title && !isDefaultTitle(ch.title, ch.chapter_number);
+                            // 24-hour highlight — server flag + client fallback
+                            const isNew = (() => {
+                              if (appSettings.show_new_chapter_badge === '0') return false;
+                              if (ch.is_new === 1 || ch.is_new === true) return true;
+                              if (!ch.created_at) return false;
+                              // Parse as UTC safely
+                              const dateStr = String(ch.created_at);
+                              const normalized = dateStr.includes('T') ? (dateStr.endsWith('Z') ? dateStr : dateStr + 'Z') : dateStr.replace(' ', 'T') + 'Z';
+                              const ts = new Date(normalized).getTime();
+                              if (isNaN(ts)) return false;
+                              return (Date.now() - ts) < 24 * 60 * 60 * 1000;
+                            })();
+                            return (
+                              <Link key={ch.id} href={`/seri/${seriesSlug}/bolum/${ch.chapter_number}`} className={`holo-chapter-row${isNew ? ' is-new' : ''}`} prefetch={false} suppressHydrationWarning>
+                                <span className="name" style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                                  <span style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {hasCustomTitle
+                                      ? `${chPrefix} ${fmtCh(ch.chapter_number)} - ${ch.title}`
+                                      : `${chWord} ${fmtCh(ch.chapter_number)}`}
+                                  </span>
+                                  {isNew && (
+                                    <span 
+                                      className="new-chapter-badge-pill"
+                                      title="Son 24 saatte yüklendi!"
+                                    >
+                                      {appSettings.lang_new || 'YENİ'}
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="time" style={{ flexShrink: 0, marginLeft: '8px' }} suppressHydrationWarning>{timeAgo(ch.created_at)}</span>
+                              
+                              </Link>
+                            );
+                          })}
+                          {(!s.chapters || s.chapters.length === 0) && (
+                            <span className="holo-chapter-row" style={{ opacity: 0.5 }}>{appSettings.lang_no_chapters_yet || 'Henüz bölüm yok'}</span>
+                          )}
+</CardComponent>
+                    </div>
+                    </div>
+                    );
+                  })}
               </div>
             )}
             
             {!loading && updatesTotalPages > 1 && (
-              <>
-                <div className="updates-pagination">
-                  {/* Önceki */}
-                  <button
-                    className="upg-nav-btn"
-                    onClick={() => goToUpdatesPage(updatesPage - 1)}
-                    disabled={updatesPage <= 1 || updatesPageLoading}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-                    Önceki
-                  </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '24px', flexWrap: 'wrap' }}>
+                {/* Önceki */}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => goToUpdatesPage(updatesPage - 1)}
+                  disabled={updatesPage <= 1 || updatesPageLoading}
+                  style={{ padding: '7px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '5px', opacity: updatesPage <= 1 ? 0.4 : 1 }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                  Önceki
+                </button>
 
-                  {/* Sayfa numaraları */}
-                  {Array.from({ length: updatesTotalPages }, (_, i) => i + 1)
-                    .filter(p => p === 1 || p === updatesTotalPages || Math.abs(p - updatesPage) <= 1)
-                    .reduce((acc, p, idx, arr) => {
-                      if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
-                      acc.push(p);
-                      return acc;
-                    }, [])
-                    .map((p, idx) =>
-                      p === '...' ? (
-                        <span key={`ellipsis-${idx}`} className="upg-ellipsis">…</span>
-                      ) : (
-                        <button
-                          key={p}
-                          className={`upg-page-btn${p === updatesPage ? ' active' : ''}`}
-                          onClick={() => goToUpdatesPage(p)}
-                          disabled={updatesPageLoading}
-                        >
-                          {p}
-                        </button>
-                      )
+                {/* Sayfa numaraları */}
+                {Array.from({ length: updatesTotalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === updatesTotalPages || Math.abs(p - updatesPage) <= 1)
+                  .reduce((acc, p, idx, arr) => {
+                    if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, idx) =>
+                    p === '...' ? (
+                      <span key={`ellipsis-${idx}`} style={{ color: 'var(--text-muted)', fontSize: '0.82rem', padding: '0 2px' }}>…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        className="btn"
+                        onClick={() => goToUpdatesPage(p)}
+                        disabled={updatesPageLoading}
+                        style={{
+                          padding: '7px 12px', fontSize: '0.82rem', minWidth: '36px',
+                          background: p === updatesPage ? 'var(--accent)' : 'var(--bg-card)',
+                          color: p === updatesPage ? '#fff' : 'var(--text-secondary)',
+                          border: `1px solid ${p === updatesPage ? 'var(--accent)' : 'var(--border-color)'}`,
+                          borderRadius: 'var(--radius)',
+                          fontWeight: p === updatesPage ? 700 : 500,
+                        }}
+                      >
+                        {p}
+                      </button>
                     )
-                  }
+                  )
+                }
 
-                  {/* Sonraki */}
-                  <button
-                    className="upg-nav-btn"
-                    onClick={() => goToUpdatesPage(updatesPage + 1)}
-                    disabled={updatesPage >= updatesTotalPages || updatesPageLoading}
-                  >
-                    Sonraki
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-                  </button>
+                {/* Sonraki */}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => goToUpdatesPage(updatesPage + 1)}
+                  disabled={updatesPage >= updatesTotalPages || updatesPageLoading}
+                  style={{ padding: '7px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '5px', opacity: updatesPage >= updatesTotalPages ? 0.4 : 1 }}
+                >
+                  Sonraki
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
 
-                  {/* Sayfa bilgisi */}
-                  <span className="upg-page-info">{updatesPage} / {updatesTotalPages}</span>
-                </div>
-              </>
+                {/* Sayfa bilgisi */}
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '4px' }}>
+                  {updatesPage} / {updatesTotalPages}
+                </span>
+              </div>
             )}
           </div>
 
@@ -919,7 +1325,7 @@ export default function HomePage() {
                           boxShadow: '0 8px 16px rgba(0,0,0,0.5)'
                         }}
                       >
-                        <Image src={nextEP.cover_url || '/demo/cover1.jpg'} alt="" fill sizes="140px" style={{ objectFit: 'cover' }} />
+                        <img src={nextEP.cover_url || '/demo/cover1.jpg'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       </div>
                     )}
 
@@ -941,7 +1347,7 @@ export default function HomePage() {
                         border: activeEP.is_adult ? '2px solid rgba(239,68,68,0.4)' : '2px solid rgba(255,255,255,0.08)'
                       }}
                     >
-                      <Image src={activeEP.cover_url || '/demo/cover1.jpg'} alt={activeEP.title} fill sizes="160px" style={{ objectFit: 'cover', ...(activeEP.is_adult && !user ? { filter: 'blur(14px)', transform: 'scale(1.1)' } : {}) }} />
+                      <img src={activeEP.cover_url || '/demo/cover1.jpg'} alt={activeEP.title} style={{ width: '100%', height: '100%', objectFit: 'cover', ...(activeEP.is_adult && !user ? { filter: 'blur(14px)', transform: 'scale(1.1)' } : {}) }} />
                       {/* Yetişkin içerik koruması — editör seçimi */}
                       {activeEP.is_adult && !user && (
                         <a href="/login" style={{

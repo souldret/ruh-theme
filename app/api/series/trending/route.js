@@ -28,15 +28,7 @@ export async function GET(request) {
             genres: JSON.parse(s.genres || '[]'),
         }));
 
-        // Performans: Cache header eklendi
-        return NextResponse.json(
-            { series: withParsedGenres },
-            {
-                headers: {
-                    'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600'
-                }
-            }
-        );
+        return NextResponse.json({ series: withParsedGenres });
     } catch (error) {
         console.error('Error fetching trending series:', error);
         return NextResponse.json({ error: 'Failed to fetch trending series' }, { status: 500 });

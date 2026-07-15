@@ -1,76 +1,11 @@
 'use client';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import SeriesCard from '@/components/SeriesCard';
 import { getCultivationData } from '@/lib/gamification';
 import { useSettings } from '@/components/SettingsProvider';
-
-/**
- * Canvas tabanlı kırpma: görüntünün kırpılmış halini blob olarak döner.
- * @param {string} imageSrc  - ObjectURL veya data URL
- * @param {object} cropData  - { x, y, scale } (CSS transform değerleri)
- * @param {number} vpW       - Önizleme kapsayıcı genişliği (px)
- * @param {number} vpH       - Önizleme kapsayıcı yüksekliği (px)
- * @param {number} outW      - Çıktı genişliği (px)
- * @param {number} outH      - Çıktı yüksekliği (px)
- * @returns {Promise<Blob>}
- */
-function getCroppedBlob(imageSrc, cropData, vpW, vpH, outW, outH) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            try {
-                const { x: cropX, y: cropY, scale: cropScale } = cropData;
-                const imgW = img.naturalWidth;
-                const imgH = img.naturalHeight;
-
-                // CSS transform: scale(cropScale) translate(cropX, cropY)
-                // Transform sırası: önce translate uygulanır, sonra scale.
-                // transform-origin merkez (vpW/2, vpH/2).
-                // Viewport merkezinde görünen image pikseli:
-                //   cx_img = imgW/2 - cropX / sfPrev
-                //   cy_img = imgH/2 - cropY / sfPrev
-                // object-fit:cover temel ölçek faktörü
-                const sfPrev = Math.max(vpW / imgW, vpH / imgH);
-
-                // Görüntü merkez pikseli: CSS translate'i image-space'e çevir
-                const cx_img = imgW / 2 - cropX / sfPrev;
-                const cy_img = imgH / 2 - cropY / sfPrev;
-
-                // Çıktı için toplam ölçek faktörü
-                // cropScale doğrudan kullanılır (Math.max ile kısıtlama YOK — önizleme ile tutarlı olsun)
-                const sfOut = Math.max(outW / imgW, outH / imgH);
-                const totalSF = sfOut * cropScale;
-
-                // Canvas kurulumu
-                const canvas = document.createElement('canvas');
-                canvas.width = outW;
-                canvas.height = outH;
-                const ctx = canvas.getContext('2d');
-
-                // Görüntüyü çiz: merkez pikseli canvas merkezine hizala
-                const drawX = outW / 2 - cx_img * totalSF;
-                const drawY = outH / 2 - cy_img * totalSF;
-                ctx.drawImage(img, drawX, drawY, imgW * totalSF, imgH * totalSF);
-
-                canvas.toBlob(blob => {
-                    if (blob) resolve(blob);
-                    else reject(new Error('Canvas toBlob başarısız'));
-                }, 'image/webp', 0.92);
-            } catch (err) {
-                reject(err);
-            }
-        };
-        img.onerror = () => reject(new Error('Görsel yüklenemedi'));
-        // Blob URL'leri için crossOrigin gerekmez ama diğer kaynaklar için güvenlik
-        if (!imageSrc.startsWith('blob:') && !imageSrc.startsWith('data:')) {
-            img.crossOrigin = 'anonymous';
-        }
-        img.src = imageSrc;
-    });
-}
 
 const GENRE_TR = {
     'Action': 'Aksiyon', 'Adventure': 'Macera', 'Comedy': 'Komedi', 'Drama': 'Drama',
@@ -249,10 +184,6 @@ const { settings: siteSettings } = useSettings() || {};
     const [customBadges, setCustomBadges] = useState([]);
     const [loadingBadges, setLoadingBadges] = useState(false);
 
-    // Reading history (for overview tab)
-    const [readingHistory, setReadingHistory] = useState([]);
-    const [loadingHistory, setLoadingHistory] = useState(false);
-
     // Image upload states (pending = selected but not saved yet)
     const [pendingAvatar, setPendingAvatar] = useState(null);
     const [pendingCover, setPendingCover] = useState(null);
@@ -263,8 +194,6 @@ const { settings: siteSettings } = useSettings() || {};
     const [avatarCropData, setAvatarCropData] = useState({ x: 0, y: 0, scale: 1 });
     const [coverCropData, setCoverCropData] = useState({ x: 0, y: 0, scale: 1 });
     const [uploadingImage, setUploadingImage] = useState(false);
-    const coverCropRef = useRef(null); // kapak kırpma container genişliğini ölçmek için
-    const avatarCropRef = useRef(null); // avatar kırpma ref
 
     useEffect(() => {
         if (!loading && !user) router.push('/login');
@@ -280,7 +209,6 @@ const { settings: siteSettings } = useSettings() || {};
             fetchDetailedStats();
             fetchReadingList();
             fetchBadges();
-            fetchReadingHistory();
         }
     }, [user]);
 
@@ -295,17 +223,6 @@ const { settings: siteSettings } = useSettings() || {};
             setUserStats(prev => ({ ...prev, favoriteCount: favs.length }));
         } catch { }
         finally { setLoadingFavs(false); }
-    }
-
-    async function fetchReadingHistory() {
-        setLoadingHistory(true);
-        try {
-            const res = await authFetch('/api/users/reading-history');
-            if (!res) return;
-            const data = await res.json();
-            setReadingHistory(data.history || []);
-        } catch {}
-        finally { setLoadingHistory(false); }
     }
 
     async function fetchQuests() {
@@ -456,7 +373,7 @@ const { settings: siteSettings } = useSettings() || {};
         const preview = URL.createObjectURL(file);
         setPendingAvatar(file);
         setAvatarPreview(preview);
-        setShowAvatarCrop(false);
+        setShowAvatarCrop(true);
         setAvatarCropData({ x: 0, y: 0, scale: 1 });
         e.target.value = '';
     }
@@ -471,36 +388,20 @@ const { settings: siteSettings } = useSettings() || {};
         const preview = URL.createObjectURL(file);
         setPendingCover(file);
         setCoverPreview(preview);
-        setShowCoverCrop(false);
+        setShowCoverCrop(true);
         setCoverCropData({ x: 0, y: 0, scale: 1 });
         e.target.value = '';
     }
 
-    function startAvatarCrop() {
-        setShowAvatarCrop(true);
-        setAvatarCropData({ x: 0, y: 0, scale: 1 });
-    }
-
-    function startCoverCrop() {
-        setShowCoverCrop(true);
-        setCoverCropData({ x: 0, y: 0, scale: 1 });
-    }
-
     async function saveAvatar() {
-        if (!pendingAvatar || !avatarPreview) return;
+        if (!pendingAvatar) return;
         setUploadingImage(true);
         try {
             const formData = new FormData();
-            // Kırpma modu aktifse canvas kırpma uygula; aksi hâlde orijinal dosyayı gönder
-            if (showAvatarCrop && (avatarCropData.x !== 0 || avatarCropData.y !== 0 || avatarCropData.scale !== 1)) {
-                const croppedBlob = await getCroppedBlob(avatarPreview, avatarCropData, 200, 200, 200, 200);
-                formData.append('avatar', croppedBlob, 'avatar.webp');
-                formData.append('cropApplied', 'true');
-            } else {
-                formData.append('avatar', pendingAvatar, pendingAvatar.name || 'avatar.webp');
-                formData.append('cropApplied', 'false');
-            }
-
+            formData.append('avatar', pendingAvatar);
+            formData.append('cropX', avatarCropData.x);
+            formData.append('cropY', avatarCropData.y);
+            formData.append('cropScale', avatarCropData.scale);
             const res = await authFetch('/api/auth/profile/avatar', {
                 method: 'POST',
                 body: formData,
@@ -511,30 +412,21 @@ const { settings: siteSettings } = useSettings() || {};
             show('Profil resmi başarıyla güncellendi!');
             if (refreshUser) await refreshUser();
             setPendingAvatar(null);
-            if (avatarPreview) URL.revokeObjectURL(avatarPreview);
             setAvatarPreview(null);
             setShowAvatarCrop(false);
-        } catch (err) { show(err.message || 'Kırpma işlemi başarısız', 'error'); }
+        } catch (err) { show(err.message, 'error'); }
         finally { setUploadingImage(false); }
     }
 
     async function saveCover() {
-        if (!pendingCover || !coverPreview) return;
+        if (!pendingCover) return;
         setUploadingImage(true);
         try {
             const formData = new FormData();
-            // Kırpma modu aktifse canvas kırpma uygula; aksi hâlde orijinal dosyayı gönder
-            if (showCoverCrop && (coverCropData.x !== 0 || coverCropData.y !== 0 || coverCropData.scale !== 1)) {
-                const vpW = coverCropRef.current?.offsetWidth || 800;
-                const vpH = 180;
-                const croppedBlob = await getCroppedBlob(coverPreview, coverCropData, vpW, vpH, 1200, 400);
-                formData.append('cover', croppedBlob, 'cover.webp');
-                formData.append('cropApplied', 'true');
-            } else {
-                formData.append('cover', pendingCover, pendingCover.name || 'cover.webp');
-                formData.append('cropApplied', 'false');
-            }
-
+            formData.append('cover', pendingCover);
+            formData.append('cropX', coverCropData.x);
+            formData.append('cropY', coverCropData.y);
+            formData.append('cropScale', coverCropData.scale);
             const res = await authFetch('/api/auth/profile/cover', {
                 method: 'POST',
                 body: formData,
@@ -542,19 +434,21 @@ const { settings: siteSettings } = useSettings() || {};
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
 
+            // Immediately update user state with new cover_url to avoid reversion
             if (data.user?.cover_url) {
                 updateUser({ ...user, cover_url: data.user.cover_url });
             } else {
                 updateUser(data.user);
             }
             show('Kapak resmi başarıyla güncellendi!');
+
+            // Also refresh from server to get fresh data
             if (refreshUser) await refreshUser();
 
             setPendingCover(null);
-            if (coverPreview) URL.revokeObjectURL(coverPreview);
             setCoverPreview(null);
             setShowCoverCrop(false);
-        } catch (err) { show(err.message || 'Kırpma işlemi başarısız', 'error'); }
+        } catch (err) { show(err.message, 'error'); }
         finally { setUploadingImage(false); }
     }
 
@@ -587,89 +481,153 @@ const { settings: siteSettings } = useSettings() || {};
     const coverStatus = canUpdateCover();
 
     return (
-        <div className="page-container page-section fade-in glass-page-container" style={{ paddingTop: 0 }}>
-
-            {/* ── Banner ── */}
-            <div className={`prf-banner${user.cover_url ? ' prf-banner-has-cover' : ''}`} style={user.cover_url ? {
-                backgroundImage: `url(${encodeURI(user.cover_url)})`,
+        <div className="page-container page-section fade-in">
+            {/* Gamified RPG Profile Header */}
+            <div className="profile-header rpg-profile-header" style={{
+                background: user.cover_url 
+                    ? undefined
+                    : 'linear-gradient(180deg, rgba(15,15,17,0.8), var(--bg-card))',
+                backgroundImage: user.cover_url
+                    ? `url(${user.cover_url})`
+                    : undefined,
                 backgroundSize: 'cover',
-                backgroundPosition: 'center',
-            } : {
-                background: `linear-gradient(135deg, ${cultivation.color}18 0%, rgba(15,15,20,1) 100%)`,
-            }}>
-                <div className="prf-banner-overlay" />
-                {/* dekoratif ışıma */}
-                <div style={{ position:'absolute', top:'-30%', right:'-5%', width:320, height:320, background:`radial-gradient(circle, ${cultivation.color}22 0%, transparent 65%)`, filter:'blur(50px)', pointerEvents:'none', zIndex:0 }} />
-            </div>
-
-            {/* ── Avatar + Bilgi Satırı ── */}
-            <div className="prf-identity">
-                {/* Avatar */}
-                <div className="prf-avatar-wrap" style={{ borderColor: cultivation.color, boxShadow: `0 0 0 3px ${cultivation.color}40` }}>
+                backgroundPosition: 'center center',
+                border: `1px solid ${cultivation.color}`,
+                boxShadow: `0 8px 32px ${cultivation.color}40`,
+                position: 'relative',
+                overflow: 'hidden',
+            }}>{user.cover_url && (
+                <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(to bottom, rgba(10,10,14,0.35) 0%, rgba(10,10,14,0.75) 60%, rgba(10,10,14,0.95) 100%)',
+                    zIndex: 0,
+                }} />
+            )}
+                <div className="rpg-profile-img-wrap" style={{ position: 'relative', zIndex: 1 }}>
                     {(!user.avatar_url || user.avatar_url === '/default-avatar.png') ? (
-                        <div style={{ width:'100%', height:'100%', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg-tertiary)', color:cultivation.color, fontSize:'2.8rem', fontWeight:800 }}>
+                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', border: `4px solid ${cultivation.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: '3rem', fontWeight: 800 }}>
                             {user.username?.[0]?.toUpperCase()}
                         </div>
                     ) : (
-                        <img src={user.avatar_url} alt="Avatar" style={{ width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover' }} />
+                        <img 
+                            src={user.avatar_url} 
+                            alt="Avatar" 
+                            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: `4px solid ${cultivation.color}` }} 
+                        />
                     )}
                 </div>
+                
+                <div style={{ flex: 1, zIndex: 1, width: '100%', position: 'relative' }}>
+                    <h1 style={{ fontSize: '2.5rem', marginBottom: '4px', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{user.username}</h1>
+                    
+                    {customBadges.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '10px' }}>
+                            {customBadges.map(b => (
+                                <span key={b.id} title={b.label} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                    fontSize: '0.8rem', fontWeight: 700,
+                                    padding: '3px 10px', borderRadius: 12,
+                                    background: `${b.color}22`,
+                                    border: `1px solid ${b.color}55`,
+                                    color: b.color,
+                                }}>
+                                    {b.icon} {b.label}
+                                </span>
+                            ))}
+                        </div>
+                    )}
 
-                {/* İsim + Badges + Rütbe */}
-                <div className="prf-identity-info">
-                    <h1 className="prf-username">{user.username}</h1>
-
-                    <div className="prf-meta-row">
-                        <span className="prf-rank-badge" style={{ background:`${cultivation.color}1a`, color:cultivation.color, borderColor:`${cultivation.color}40` }}>
-                            {cultivation.icon && <RankIcon icon={cultivation.icon} size={13} color={cultivation.color} />}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '20px' }} className="rpg-title-badges">
+                        <span style={{ 
+                            background: `${cultivation.color}20`, 
+                            color: cultivation.color, 
+                            padding: '6px 14px', 
+                            borderRadius: '20px', 
+                            fontWeight: 800,
+                            letterSpacing: '1px',
+                            textTransform: 'uppercase',
+                            fontSize: '0.9rem',
+                            border: `1px solid ${cultivation.color}50`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                        }}>
+                            {cultivation.icon && <RankIcon icon={cultivation.icon} size={16} color={cultivation.color} />}
                             {cultivation.title}
                         </span>
-                        <span className="prf-days-badge">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            {getMemberDays()} Gün Aktif
-                        </span>
-                        {customBadges.map(b => (
-                            <span key={b.id} title={b.label} style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:'0.72rem', fontWeight:700, padding:'2px 8px', borderRadius:10, background:`${b.color}1a`, border:`1px solid ${b.color}40`, color:b.color }}>
-                                {b.icon} {b.label}
-                            </span>
-                        ))}
+                        <span style={{ color: 'var(--text-muted)' }}>{getMemberDays()} Gün Aktif</span>
                     </div>
 
-                    {/* XP Bar */}
-                    <div className="prf-xp-row">
-                        <span className="prf-xp-label">{user.yomi_points || 0} {pointsName}</span>
-                        <span className="prf-xp-next">{cultivation.nextRank ? `${cultivation.nextRank.title} için ${cultivation.nextRank.minPoints - (user.yomi_points||0)} ${pointsName}` : 'Max. Rütbe'}</span>
-                    </div>
-                    <div className="prf-xp-bar">
-                        <div className="prf-xp-fill" style={{ width:`${cultivation.progressPercent}%`, background:cultivation.progressColor }} />
+                    <div style={{ width: '100%', maxWidth: '500px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 700 }}>
+                            <span style={{ color: 'var(--text-primary)' }}>{user.yomi_points || 0} {pointsName}</span>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                                {cultivation.nextRank ? `Sonraki Rütbe: ${cultivation.nextRank.title} (${cultivation.nextRank.minPoints} ${pointsName})` : 'Maksimum Rütbeye Ulaşıldı'}
+                            </span>
+                        </div>
+                        <div style={{ width: '100%', height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{ 
+                                width: `${cultivation.progressPercent}%`, 
+                                height: '100%', 
+                                background: cultivation.progressColor,
+                                borderRadius: '4px',
+                                transition: 'width 1s ease-out'
+                            }} />
+                        </div>
                     </div>
                 </div>
+                
+                {/* Decorative background element based on rank */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${cultivation.color}20 0%, transparent 70%)`,
+                    filter: 'blur(40px)',
+                    zIndex: 0,
+                    pointerEvents: 'none'
+                }} />
+            </div>
 
-                {/* Hızlı İstatistikler — sağ taraf */}
-                <div className="prf-quick-stats">
-                    <button className="prf-qs-card glass-panel glass-panel-hoverable" onClick={() => setTab('favorites')}>
-                        <span className="prf-qs-num" style={{ color:'#f87171' }}>{favorites.length}</span>
-                        <span className="prf-qs-lbl">Favori</span>
-                    </button>
-                    <button className="prf-qs-card glass-panel glass-panel-hoverable" onClick={() => setTab('stats')}>
-                        <span className="prf-qs-num" style={{ color:'#818cf8' }}>{user.yomi_points || 0}</span>
-                        <span className="prf-qs-lbl">{pointsName}</span>
-                    </button>
-                    <button className="prf-qs-card glass-panel glass-panel-hoverable" onClick={() => setTab('reading-list')}>
-                        <span className="prf-qs-num" style={{ color:'#4ade80' }}>{readingList.length}</span>
-                        <span className="prf-qs-lbl">Listede</span>
-                    </button>
-                    <button className="prf-qs-card glass-panel glass-panel-hoverable" onClick={() => setTab('badges')}>
-                        <span className="prf-qs-num" style={{ color:'#fbbf24' }}>{badges.filter(b => b.earned).length}</span>
-                        <span className="prf-qs-lbl">Rozet</span>
-                    </button>
+            {/* Quick Stats */}
+            <div className="profile-stats-row" style={{ marginTop: '24px' }}>
+                <div className="profile-stat-card glass-panel glass-panel-hoverable" style={{ cursor: 'pointer' }} onClick={() => setTab('favorites')} title="Kütüphaneye Git">
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171', marginBottom: 6 }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
+                    </div>
+                    <span className="profile-stat-number">{favorites.length}</span>
+                    <span className="profile-stat-label">Favoriler</span>
+                </div>
+                <div className="profile-stat-card glass-panel glass-panel-hoverable" style={{ cursor: 'pointer' }} onClick={() => setTab('stats')} title="İstatistiklere Git">
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818cf8', marginBottom: 6 }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                    </div>
+                    <span className="profile-stat-number">{user.yomi_points || 0}</span>
+                    <span className="profile-stat-label">{pointsName}</span>
+                </div>
+                <div className="profile-stat-card glass-panel glass-panel-hoverable" style={{ cursor: 'pointer' }} onClick={() => setTab('reading-list')} title="Okuma Listesine Git">
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4ade80', marginBottom: 6 }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    </div>
+                    <span className="profile-stat-number">{readingList.length}</span>
+                    <span className="profile-stat-label">Okuma Listesi</span>
+                </div>
+                <div className="profile-stat-card glass-panel glass-panel-hoverable" style={{ cursor: 'pointer' }} onClick={() => setTab('badges')} title="Rozetlere Git">
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fbbf24', marginBottom: 6 }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+                    </div>
+                    <span className="profile-stat-number">{badges.filter(b => b.earned).length}</span>
+                    <span className="profile-stat-label">Rozetler</span>
                 </div>
             </div>
 
-            {/* ── Tab Navigation ── */}
-            <div className="prf-tabs">
+            {/* Tab Navigation */}
+            <div className="profile-tabs">
                 {tabs.map(t => (
-                    <button key={t.id} className={`prf-tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>
+                    <button key={t.id} className={`profile-tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
                         {t.icon} {t.label}
                     </button>
                 ))}
@@ -680,42 +638,37 @@ const { settings: siteSettings } = useSettings() || {};
             {/* Overview */}
             {tab === 'overview' && (
                 <div className="admin-grid">
-                    {/* ── Okuma Geçmişi Kartı — kompakt liste ── */}
-                    <div className="admin-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.04) 100%)', border: '1px solid rgba(99,102,241,0.18)' }}>
+                    {/* ── Kütüphanem Kartı — kompakt liste ── */}
+                    <div className="admin-card glass-panel" style={{ cursor: 'pointer', background: 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(99,102,241,0.04) 100%)', border: '1px solid rgba(139,92,246,0.18)' }} onClick={() => setTab('favorites')}>
                         <h3 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                Okuma Geçmişi
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
+                                Kütüphanem
                             </span>
-                            <a href="/gecmis" style={{ fontSize: '0.7rem', color: 'var(--accent-light)', fontWeight: 500 }}>Tümünü gör →</a>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>{favorites.length} seri →</span>
                         </h3>
-                        {loadingHistory ? (
-                            <div style={{ textAlign: 'center', padding: 16 }}><div className="spinner" /></div>
-                        ) : readingHistory.length > 0 ? (
+                        {favorites.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {readingHistory.slice(0, 5).map(item => (
-                                    <a key={item.chapter_id || item.series_id} href={`/read/${item.chapter_id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', textDecoration: 'none' }}>
+                                {favorites.slice(0, 5).map(f => (
+                                    <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                         <img
-                                            src={item.cover_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='40'%3E%3Crect width='28' height='40' fill='%231a1a2e'/%3E%3C/svg%3E"}
-                                            alt={item.series_title || ''}
+                                            src={f.cover_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='40'%3E%3Crect width='28' height='40' fill='%231a1a2e'/%3E%3C/svg%3E"}
+                                            alt={f.title || ''}
                                             style={{ width: 28, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0, border: '1px solid rgba(255,255,255,0.08)' }}
                                             loading="lazy"
                                         />
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.series_title || item.title}</div>
-                                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Bölüm {item.chapter_number}</div>
-                                        </div>
-                                    </a>
+                                        <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</span>
+                                    </div>
                                 ))}
-                                {readingHistory.length > 5 && (
+                                {favorites.length > 5 && (
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', paddingTop: 4 }}>
-                                        +{readingHistory.length - 5} daha fazla
+                                        +{favorites.length - 5} daha fazla seri
                                     </div>
                                 )}
                             </div>
                         ) : (
                             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-                                Henüz okuma geçmişiniz yok. Manga okumaya başlayın!
+                                Manga okumaya başlayarak kütüphanenizi oluşturun!
                             </p>
                         )}
                     </div>
@@ -729,36 +682,36 @@ const { settings: siteSettings } = useSettings() || {};
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: 4, marginBottom: 8 }}>
                             {pointsName} kazanmak için görevleri tamamlayın! Bölüm okuyarak, yorum yaparak ve sitede vakit geçirerek puan kazanabilirsiniz.
                         </p>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 16, padding: '10px 14px', background: 'rgba(94,114,228,0.08)', borderRadius: 10, border: '1px solid rgba(94,114,228,0.2)', lineHeight: 1.5 }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 12, padding: '6px 10px', background: 'rgba(94,114,228,0.08)', borderRadius: 8, border: '1px solid rgba(94,114,228,0.2)' }}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginRight: 4, verticalAlign: '-2px' }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><strong style={{ color: 'var(--accent-light)' }}>İpucu:</strong> Sitede her geçirilen dakika için {pointsName} kazanabilirsiniz. Sitede kalın, puan kazanın!
                         </div>
                         <div className="quest-board">
                             {quests.map(q => (
                                 <div key={q.id} className={`quest-card ${q.claimed ? 'completed' : ''}`}>
-                                    <div className="quest-icon" style={{ background: q.claimed ? undefined : 'var(--bg-tertiary)', color: q.claimed ? undefined : 'var(--text-muted)' }}>
+                                    <div className="quest-icon" style={{ background: q.claimed ? '#22c55e20' : 'var(--bg-tertiary)', color: q.claimed ? '#22c55e' : 'var(--text-muted)' }}>
                                         {q.claimed ? <CheckCircleIcon /> : <QuestIcon icon={q.icon} />}
                                     </div>
                                     <div className="quest-info">
                                         <div className="quest-title">{q.title}</div>
                                         <div className="quest-desc">{q.desc}</div>
                                         <div className="quest-progress">
-                                            <div className="quest-progress-fill" style={{ width: `${Math.min(100, (q.progress / q.target) * 100)}%` }} />
+                                            <div className="quest-progress-fill" style={{ width: `${Math.min(100, (q.progress / q.target) * 100)}%`, background: q.claimed ? '#22c55e' : undefined }} />
                                         </div>
-                                        <div className="quest-progress-text">{q.progress}/{q.target}</div>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{q.progress}/{q.target}</span>
                                     </div>
-                                    <div className="quest-reward-wrap">
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                                         <span className="quest-reward">+{q.reward} {pointsName}</span>
                                         {q.completed && !q.claimed ? (
-                                            <button className="quest-claim-btn" onClick={() => claimQuest(q.id)} disabled={claimingQuest === q.id}>
+                                            <button className="btn btn-primary btn-sm" onClick={() => claimQuest(q.id)} disabled={claimingQuest === q.id} style={{ fontSize: '0.72rem', padding: '4px 10px' }}>
                                                 {claimingQuest === q.id ? '...' : 'Ödülü Al'}
                                             </button>
                                         ) : q.claimed ? (
-                                            <span className="quest-claimed-text">Alındı</span>
+                                            <span style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 700 }}>Alındı</span>
                                         ) : null}
                                     </div>
                                 </div>
                             ))}
-                            {quests.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Görevler yükleniyor...</p>}
+                            {quests.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>Görevler yükleniyor...</p>}
                         </div>
                     </div>
                 </div>
@@ -880,7 +833,7 @@ const { settings: siteSettings } = useSettings() || {};
                             <div className="stats-grid" style={{ marginBottom: 24 }}>
 
                                 {/* Okunan Bölüm */}
-                                <div className="stat-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(99,102,241,0.04))', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                <div className="stat-card" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(99,102,241,0.04))', border: '1px solid rgba(99,102,241,0.2)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                         <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818cf8' }}>
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
@@ -892,7 +845,7 @@ const { settings: siteSettings } = useSettings() || {};
                                 </div>
 
                                 {/* Bu Hafta */}
-                                <div className="stat-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.12), rgba(34,197,94,0.04))', border: '1px solid rgba(34,197,94,0.2)' }}>
+                                <div className="stat-card" style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.12), rgba(34,197,94,0.04))', border: '1px solid rgba(34,197,94,0.2)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                         <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4ade80' }}>
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -904,7 +857,7 @@ const { settings: siteSettings } = useSettings() || {};
                                 </div>
 
                                 {/* Bu Ay */}
-                                <div className="stat-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04))', border: '1px solid rgba(245,158,11,0.2)' }}>
+                                <div className="stat-card" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04))', border: '1px solid rgba(245,158,11,0.2)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                         <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fbbf24' }}>
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -916,7 +869,7 @@ const { settings: siteSettings } = useSettings() || {};
                                 </div>
 
                                 {/* Yorumlar */}
-                                <div className="stat-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(236,72,153,0.04))', border: '1px solid rgba(236,72,153,0.2)' }}>
+                                <div className="stat-card" style={{ background: 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(236,72,153,0.04))', border: '1px solid rgba(236,72,153,0.2)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                         <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(236,72,153,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f472b6' }}>
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -928,7 +881,7 @@ const { settings: siteSettings } = useSettings() || {};
                                 </div>
 
                                 {/* Tamamlandı */}
-                                <div className="stat-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(20,184,166,0.12), rgba(20,184,166,0.04))', border: '1px solid rgba(20,184,166,0.2)' }}>
+                                <div className="stat-card" style={{ background: 'linear-gradient(135deg, rgba(20,184,166,0.12), rgba(20,184,166,0.04))', border: '1px solid rgba(20,184,166,0.2)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                         <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(20,184,166,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2dd4bf' }}>
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -940,7 +893,7 @@ const { settings: siteSettings } = useSettings() || {};
                                 </div>
 
                                 {/* Okuyor */}
-                                <div className="stat-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.04))', border: '1px solid rgba(59,130,246,0.2)' }}>
+                                <div className="stat-card" style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.04))', border: '1px solid rgba(59,130,246,0.2)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                         <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#60a5fa' }}>
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -1218,7 +1171,7 @@ const { settings: siteSettings } = useSettings() || {};
                                     coin:  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v1m0 8v1M9.07 9.07A3 3 0 0 1 12 8a3 3 0 0 1 3 3c0 1.5-1 2.5-3 3s-3 1.5-3 3a3 3 0 0 0 3 3 3 3 0 0 0 2.93-2"/></svg>,
                                 };
                                 return (
-                                    <div key={b.id} className={`badge-card glass-panel ${b.earned ? 'earned' : 'locked'}`} title={b.description}>
+                                    <div key={b.id} className={`badge-card ${b.earned ? 'earned' : 'locked'}`} title={b.description}>
                                         {b.is_new && <div className="badge-new-dot" />}
                                         <div className="badge-card-icon" style={{ color: b.earned ? b.color : 'var(--text-muted)', filter: b.earned ? 'none' : 'grayscale(1)', opacity: b.earned ? 1 : 0.4 }}>
                                             {iconSvg[b.icon] || <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>}
@@ -1255,19 +1208,16 @@ const { settings: siteSettings } = useSettings() || {};
                             <input type="email" className="form-input" value={email} onChange={e => setEmail(e.target.value)} required />
                         </div>
 
-                        {/* Avatar Upload UI - YENİ SİSTEM */}
+                        {/* Avatar Upload UI - NEW SYSTEM */}
                         <div className="form-group" style={{
                             background: 'rgba(0,0,0,0.2)',
-                            padding: '20px',
-                            borderRadius: '12px',
+                            padding: '16px',
+                            borderRadius: '8px',
                             border: '1px solid var(--border-color)',
                             marginTop: '24px'
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
-                                    Profil Resmi
-                                </span>
+                                <span style={{ fontWeight: 600 }}>Profil Resmi</span>
                                 {!avatarStatus.canUpdate && (
                                     <span style={{ color: '#ef4444', fontSize: '0.8rem', fontWeight: 600 }}>
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
@@ -1281,246 +1231,97 @@ const { settings: siteSettings } = useSettings() || {};
                                     </span>
                                 )}
                             </div>
-                            <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '16px' }}>
-                                24 saatte en fazla 2 kez değiştirilebilir. En fazla 2MB. JPEG, PNG, WebP veya GIF.
+                            <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '12px' }}>
+                                24 saatte en fazla 2 kez değiştirilebilir. En fazla 2MB. Seçtikten sonra Kaydet butonuna tıklayın.
                             </small>
 
-                            {/* Önceki ve Yeni Karşılaştırma */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 16 }}>
-                                {/* Mevcut Avatar */}
-                                <div style={{ textAlign: 'center' }}>
-                                    <div style={{
-                                        width: 72, height: 72, borderRadius: '50%', overflow: 'hidden',
-                                        border: '3px solid var(--accent)', flexShrink: 0,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        background: 'var(--bg-tertiary)', color: 'var(--text-muted)',
-                                        margin: '0 auto 6px'
-                                    }}>
-                                        {(user.avatar_url && user.avatar_url !== '/default-avatar.png') ? (
-                                            <img src={user.avatar_url} alt="Mevcut" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                        ) : (
-                                            <span style={{ fontSize: '1.8rem', fontWeight: 800 }}>{user.username?.[0]?.toUpperCase()}</span>
-                                        )}
-                                    </div>
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Mevcut</div>
+                            {/* Avatar Preview with Crop */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                                <div style={{
+                                    width: 80, height: 80, borderRadius: '50%', overflow: 'hidden',
+                                    border: '3px solid var(--accent)', flexShrink: 0,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: 'var(--bg-tertiary)', fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)',
+                                    position: 'relative'
+                                }}>
+                                    {pendingAvatar && avatarPreview ? (
+                                        <img
+                                            src={avatarPreview}
+                                            alt="Avatar Preview"
+                                            style={{
+                                                width: '100%', height: '100%', objectFit: 'cover',
+                                                transform: `scale(${avatarCropData.scale}) translate(${avatarCropData.x}px, ${avatarCropData.y}px)`
+                                            }}
+                                        />
+                                    ) : (user.avatar_url && user.avatar_url !== '/default-avatar.png') ? (
+                                        <img src={user.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : (
+                                        user.username?.[0]?.toUpperCase() || '?'
+                                    )}
                                 </div>
-
-                                {/* Ok işareti */}
-                                {pendingAvatar && (
-                                    <div style={{ color: 'var(--accent)', flexShrink: 0 }}>
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>{user.username}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        {pendingAvatar ? 'Değişiklik bekleniyor - Kaydet butonuna tıklayın' :
+                                         (user.avatar_url && user.avatar_url !== '/default-avatar.png' ? 'Özel profil resmi ayarlandı' : 'Varsayılan profil resmi kullanılıyor')}
                                     </div>
-                                )}
-
-                                {/* Yeni Önizleme */}
-                                <div style={{ textAlign: 'center', flex: 1 }}>
-                                    <div style={{
-                                        width: 72, height: 72, borderRadius: '50%', overflow: 'hidden',
-                                        border: '3px solid #22c55e', flexShrink: 0,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        background: 'var(--bg-tertiary)', color: 'var(--text-muted)',
-                                        margin: '0 auto 6px'
-                                    }}>
-                                        {pendingAvatar && avatarPreview ? (
-                                            <img 
-                                                src={avatarPreview} 
-                                                alt="Önizleme" 
-                                                style={{
-                                                    width: '100%', height: '100%', objectFit: 'cover',
-                                                    transform: `scale(${avatarCropData.scale}) translate(${avatarCropData.x}px, ${avatarCropData.y}px)`,
-                                                    transformOrigin: 'center'
-                                                }} 
-                                            />
-                                        ) : (
-                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Seçilmedi</span>
-                                        )}
-                                    </div>
-                                    <div style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 600 }}>Yeni (Kaydedilecek)</div>
                                 </div>
                             </div>
 
-                            {/* Kırpma Alanı */}
-                            {showAvatarCrop && avatarPreview && (
-                                <div style={{ 
-                                    background: 'rgba(0,0,0,0.3)', 
-                                    padding: 20, 
-                                    borderRadius: 12, 
-                                    marginBottom: 16, 
-                                    border: '1px solid rgba(255,255,255,0.1)'
-                                }}>
-                                    {/* Kırpma ipucu */}
-                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                        Görseli sürükleyerek konumlandırın, slider ile zoom yapın
-                                    </div>
-
-                                    {/* Ana Kırpma Alanı */}
-                                    <div
-                                        ref={avatarCropRef}
-                                        style={{ 
-                                            width: 200, height: 200, borderRadius: '50%', 
-                                            overflow: 'hidden', 
-                                            margin: '0 auto 16px', 
-                                            border: '3px solid var(--accent)', 
-                                            cursor: 'grab', 
-                                            position: 'relative', 
-                                            background: '#0a0a0f', 
-                                            userSelect: 'none',
-                                            touchAction: 'none'
-                                        }}
-                                        onMouseDown={e => {
-                                            e.preventDefault();
-                                            const el = e.currentTarget;
-                                            if (!el) return;
-                                            el.style.cursor = 'grabbing';
-                                            const startX = e.clientX; const startY = e.clientY;
-                                            const origX = avatarCropData.x; const origY = avatarCropData.y;
-                                            const onMove = mv => {
-                                                const dx = mv.clientX - startX;
-                                                const dy = mv.clientY - startY;
-                                                const sens = 1 / avatarCropData.scale;
-                                                setAvatarCropData(p => ({
-                                                    ...p,
-                                                    x: origX + dx * sens,
-                                                    y: origY + dy * sens
-                                                }));
-                                            };
-                                            const onUp = () => {
-                                                if (el) el.style.cursor = 'grab';
-                                                window.removeEventListener('mousemove', onMove);
-                                                window.removeEventListener('mouseup', onUp);
-                                            };
-                                            window.addEventListener('mousemove', onMove);
-                                            window.addEventListener('mouseup', onUp);
-                                        }}
-                                        onTouchStart={e => {
-                                            e.preventDefault();
-                                            const t = e.touches[0];
-                                            const startX = t.clientX; const startY = t.clientY;
-                                            const origX = avatarCropData.x; const origY = avatarCropData.y;
-                                            const onMove = mv => {
-                                                const tt = mv.touches[0];
-                                                const dx = tt.clientX - startX;
-                                                const dy = tt.clientY - startY;
-                                                const sens = 1 / avatarCropData.scale;
-                                                setAvatarCropData(p => ({
-                                                    ...p,
-                                                    x: origX + dx * sens,
-                                                    y: origY + dy * sens
-                                                }));
-                                            };
-                                            const onEnd = () => {
-                                                window.removeEventListener('touchmove', onMove);
-                                                window.removeEventListener('touchend', onEnd);
-                                            };
-                                            window.addEventListener('touchmove', onMove, { passive: false });
-                                            window.addEventListener('touchend', onEnd);
-                                        }}
-                                        onWheel={e => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            const delta = -e.deltaY * 0.002;
-                                            const newScale = Math.max(0.5, Math.min(5, avatarCropData.scale + delta));
-                                            setAvatarCropData(p => ({ ...p, scale: newScale }));
-                                        }}
-                                    >
-                                        <img 
-                                            src={avatarPreview} 
-                                            alt="Kırp" 
-                                            style={{ 
-                                                width: '100%', height: '100%', 
-                                                objectFit: 'cover', 
-                                                transform: `scale(${avatarCropData.scale}) translate(${avatarCropData.x}px, ${avatarCropData.y}px)`,
-                                                transformOrigin: 'center', 
-                                                pointerEvents: 'none',
-                                                willChange: 'transform'
-                                            }} 
-                                        />
-                                    </div>
-
-                                    {/* Zoom Kontrolü */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--text-muted)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                        <input 
-                                            type="range" 
-                                            min="50" 
-                                            max="500" 
-                                            value={Math.round(avatarCropData.scale * 100)}
-                                            onChange={e => setAvatarCropData(p => ({ ...p, scale: parseInt(e.target.value) / 100 }))}
-                                            style={{ flex: 1, height: 6, cursor: 'pointer', accentColor: 'var(--accent)' }}
-                                        />
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--text-muted)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 45, textAlign: 'right' }}>
-                                            {Math.round(avatarCropData.scale * 100)}%
-                                        </span>
-                                    </div>
-
-                                    {/* Sıfırla Butonu */}
-                                    <div style={{ textAlign: 'center' }}>
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setAvatarCropData({ x: 0, y: 0, scale: 1 })} 
-                                            style={{ 
-                                                background: 'var(--bg-tertiary)', 
-                                                border: '1px solid var(--border)', 
-                                                borderRadius: 8, 
-                                                padding: '8px 16px', 
-                                                cursor: 'pointer', 
-                                                color: 'var(--text-muted)', 
-                                                fontSize: '0.78rem',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: 6
-                                            }}
-                                        >
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            {/* Crop Controls */}
+                            {showAvatarCrop && (
+                                <div style={{ background: 'rgba(0,0,0,0.15)', padding: 12, borderRadius: 8, marginBottom: 12 }}>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>Görüntüyü kaydırarak konumlandırın:</div>
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <button type="button" onClick={() => setAvatarCropData(p => ({ ...p, x: p.x - 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setAvatarCropData(p => ({ ...p, x: p.x + 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setAvatarCropData(p => ({ ...p, y: p.y - 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setAvatarCropData(p => ({ ...p, y: p.y + 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setAvatarCropData(p => ({ ...p, scale: Math.max(0.5, p.scale - 0.1) }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setAvatarCropData(p => ({ ...p, scale: Math.min(2, p.scale + 0.1) }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setAvatarCropData({ x: 0, y: 0, scale: 1 })} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.75rem' }}>
                                             Sıfırla
                                         </button>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Dosya Yükleme ve Aksiyonlar */}
+                            {/* File Upload & Actions */}
                             {avatarStatus.canUpdate && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     {pendingAvatar ? (
                                         <div style={{ display: 'flex', gap: 8 }}>
-                                            {!showAvatarCrop && (
-                                                <button type="button" className="btn btn-secondary" onClick={startAvatarCrop} style={{ flex: 1 }}>
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
-                                                    Kırp
-                                                </button>
-                                            )}
                                             <button type="button" className="btn btn-primary" onClick={saveAvatar} disabled={uploadingImage} style={{ flex: 1 }}>
-                                                {uploadingImage ? (
-                                                    <>
-                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8, animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                                                        Kaydediliyor...
-                                                    </>
-                                                ) : 'Kaydet'}
+                                                {uploadingImage ? 'Kaydediliyor...' : 'Profil Resmini Kaydet'}
                                             </button>
-                                            {showAvatarCrop ? (
-                                                <button type="button" className="btn btn-ghost" onClick={() => setShowAvatarCrop(false)} style={{ flexShrink: 0 }}>
-                                                    Kırpma İptal
-                                                </button>
-                                            ) : (
-                                                <button type="button" className="btn btn-ghost" onClick={cancelAvatarUpload} style={{ flexShrink: 0 }}>
-                                                    İptal
-                                                </button>
-                                            )}
+                                            <button type="button" className="btn btn-ghost" onClick={cancelAvatarUpload} style={{ flexShrink: 0 }}>
+                                                İptal
+                                            </button>
                                         </div>
                                     ) : (
                                         <label style={{
                                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                             background: 'var(--bg-glass)', border: '1px dashed var(--border-color)',
-                                            borderRadius: '10px', padding: '16px', cursor: 'pointer',
-                                            fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-secondary)',
+                                            borderRadius: '8px', padding: '14px', cursor: 'pointer',
+                                            fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)',
                                             transition: 'all 0.2s'
                                         }}
                                         onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-light)'; }}
                                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                                         >
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                                             Cihazdan Profil Resmi Seç
                                             <input
                                                 type="file"
@@ -1534,19 +1335,16 @@ const { settings: siteSettings } = useSettings() || {};
                             )}
                         </div>
 
-                        {/* Cover Upload UI - YENİ SİSTEM */}
+                        {/* Cover Upload UI - NEW SYSTEM */}
                         <div className="form-group" style={{
                             background: 'rgba(0,0,0,0.2)',
-                            padding: '20px',
-                            borderRadius: '12px',
+                            padding: '16px',
+                            borderRadius: '8px',
                             border: '1px solid var(--border-color)',
                             marginTop: '24px'
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    Kapak Resmi
-                                </span>
+                                <span style={{ fontWeight: 600 }}>Kapak Resmi (Cover)</span>
                                 {!coverStatus.canUpdate && (
                                     <span style={{ color: '#ef4444', fontSize: '0.8rem', fontWeight: 600 }}>
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
@@ -1560,248 +1358,99 @@ const { settings: siteSettings } = useSettings() || {};
                                     </span>
                                 )}
                             </div>
-                            <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '16px' }}>
-                                24 saatte en fazla 2 kez değiştirilebilir. En fazla 5MB. JPEG, PNG veya WebP.
+                            <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '12px' }}>
+                                24 saatte en fazla 2 kez değiştirilebilir. En fazla 5MB. Seçtikten sonra Kaydet butonuna tıklayın.
                             </small>
 
-                            {/* Önceki ve Yeni Karşılaştırma */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 16, alignItems: 'center', marginBottom: 16 }}>
-                                {/* Mevcut Cover */}
-                                <div>
-                                    <div style={{
-                                        width: '100%', height: 80, borderRadius: 8, overflow: 'hidden',
-                                        border: '2px solid var(--border-color)',
-                                        background: 'var(--bg-tertiary)',
-                                        position: 'relative'
-                                    }}>
-                                        {user.cover_url ? (
-                                            <img src={user.cover_url} alt="Mevcut" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                        ) : (
-                                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                                                Kapak yok
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>Mevcut</div>
-                                </div>
-
-                                {/* Ok işareti */}
-                                {pendingCover && (
-                                    <div style={{ color: 'var(--accent)' }}>
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                                    </div>
-                                )}
-
-                                {/* Yeni Önizleme */}
-                                <div>
-                                    <div style={{
-                                        width: '100%', height: 80, borderRadius: 8, overflow: 'hidden',
-                                        border: '2px solid #22c55e',
-                                        background: 'var(--bg-tertiary)',
-                                        position: 'relative'
-                                    }}>
-                                        {pendingCover && coverPreview ? (
-                                            <img 
-                                                src={coverPreview} 
-                                                alt="Önizleme" 
+                            {/* Cover Preview with Crop */}
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{
+                                    width: '100%', height: 120, borderRadius: '8px', overflow: 'hidden',
+                                    border: '2px solid var(--border-color)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: 'var(--bg-tertiary)', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)',
+                                    position: 'relative',
+                                }}>
+                                    {pendingCover && coverPreview ? (
+                                        <>
+                                            <img
+                                                src={coverPreview}
+                                                alt="Cover Preview"
                                                 style={{
                                                     width: '100%', height: '100%', objectFit: 'cover',
-                                                    transform: `scale(${coverCropData.scale}) translate(${coverCropData.x}px, ${coverCropData.y}px)`,
-                                                    transformOrigin: 'center'
-                                                }} 
+                                                    transform: `scale(${coverCropData.scale}) translate(${coverCropData.x * 2}px, ${coverCropData.y * 2}px)`
+                                                }}
                                             />
-                                        ) : (
-                                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                                                Seçilmedi
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div style={{ fontSize: '0.7rem', color: '#22c55e', marginTop: 6, textAlign: 'center', fontWeight: 600 }}>Yeni (Kaydedilecek)</div>
+                                            <div style={{ position: 'absolute', bottom: 8, left: 10, fontSize: '0.7rem', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>Yeni kapak (kaydedilmedi)</div>
+                                        </>
+                                    ) : user.cover_url ? (
+                                        <>
+                                            <img src={user.cover_url} alt="Cover" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                            <div style={{ position: 'absolute', bottom: 8, left: 10, fontSize: '0.7rem', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>Mevcut kapak</div>
+                                        </>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, opacity: 0.5 }}>
+                                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                            Kapak fotoğrafı ayarlanmamış
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Kırpma Alanı */}
-                            {showCoverCrop && coverPreview && (
-                                <div style={{ 
-                                    background: 'rgba(0,0,0,0.3)', 
-                                    padding: 20, 
-                                    borderRadius: 12, 
-                                    marginBottom: 16, 
-                                    border: '1px solid rgba(255,255,255,0.1)'
-                                }}>
-                                    {/* Kırpma ipucu */}
-                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                        Görseli sürükleyerek konumlandırın, slider ile zoom yapın
-                                    </div>
-
-                                    {/* Ana Kırpma Alanı */}
-                                    <div
-                                        ref={coverCropRef}
-                                        style={{ 
-                                            width: '100%', height: 180, borderRadius: 10, 
-                                            overflow: 'hidden', 
-                                            marginBottom: 16, 
-                                            border: '3px solid var(--accent)', 
-                                            cursor: 'grab', 
-                                            position: 'relative', 
-                                            background: '#0a0a0f', 
-                                            userSelect: 'none',
-                                            touchAction: 'none'
-                                        }}
-                                        onMouseDown={e => {
-                                            e.preventDefault();
-                                            const el = e.currentTarget;
-                                            if (!el) return;
-                                            el.style.cursor = 'grabbing';
-                                            const startX = e.clientX; const startY = e.clientY;
-                                            const origX = coverCropData.x; const origY = coverCropData.y;
-                                            const onMove = mv => {
-                                                const dx = mv.clientX - startX;
-                                                const dy = mv.clientY - startY;
-                                                const sens = 1 / coverCropData.scale;
-                                                setCoverCropData(p => ({
-                                                    ...p,
-                                                    x: origX + dx * sens,
-                                                    y: origY + dy * sens
-                                                }));
-                                            };
-                                            const onUp = () => {
-                                                if (el) el.style.cursor = 'grab';
-                                                window.removeEventListener('mousemove', onMove);
-                                                window.removeEventListener('mouseup', onUp);
-                                            };
-                                            window.addEventListener('mousemove', onMove);
-                                            window.addEventListener('mouseup', onUp);
-                                        }}
-                                        onTouchStart={e => {
-                                            e.preventDefault();
-                                            const t = e.touches[0];
-                                            const startX = t.clientX; const startY = t.clientY;
-                                            const origX = coverCropData.x; const origY = coverCropData.y;
-                                            const onMove = mv => {
-                                                const tt = mv.touches[0];
-                                                const dx = tt.clientX - startX;
-                                                const dy = tt.clientY - startY;
-                                                const sens = 1 / coverCropData.scale;
-                                                setCoverCropData(p => ({
-                                                    ...p,
-                                                    x: origX + dx * sens,
-                                                    y: origY + dy * sens
-                                                }));
-                                            };
-                                            const onEnd = () => {
-                                                window.removeEventListener('touchmove', onMove);
-                                                window.removeEventListener('touchend', onEnd);
-                                            };
-                                            window.addEventListener('touchmove', onMove, { passive: false });
-                                            window.addEventListener('touchend', onEnd);
-                                        }}
-                                        onWheel={e => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            const delta = -e.deltaY * 0.002;
-                                            const newScale = Math.max(0.5, Math.min(5, coverCropData.scale + delta));
-                                            setCoverCropData(p => ({ ...p, scale: newScale }));
-                                        }}
-                                    >
-                                        <img 
-                                            src={coverPreview} 
-                                            alt="Kırp" 
-                                            style={{ 
-                                                width: '100%', height: '100%', 
-                                                objectFit: 'cover', 
-                                                transform: `scale(${coverCropData.scale}) translate(${coverCropData.x}px, ${coverCropData.y}px)`,
-                                                transformOrigin: 'center', 
-                                                pointerEvents: 'none',
-                                                willChange: 'transform'
-                                            }} 
-                                        />
-                                    </div>
-
-                                    {/* Zoom Kontrolü */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--text-muted)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                        <input 
-                                            type="range" 
-                                            min="50" 
-                                            max="500" 
-                                            value={Math.round(coverCropData.scale * 100)}
-                                            onChange={e => setCoverCropData(p => ({ ...p, scale: parseInt(e.target.value) / 100 }))}
-                                            style={{ flex: 1, height: 6, cursor: 'pointer', accentColor: 'var(--accent)' }}
-                                        />
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--text-muted)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 45, textAlign: 'right' }}>
-                                            {Math.round(coverCropData.scale * 100)}%
-                                        </span>
-                                    </div>
-
-                                    {/* Sıfırla Butonu */}
-                                    <div style={{ textAlign: 'center' }}>
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setCoverCropData({ x: 0, y: 0, scale: 1 })} 
-                                            style={{ 
-                                                background: 'var(--bg-tertiary)', 
-                                                border: '1px solid var(--border)', 
-                                                borderRadius: 8, 
-                                                padding: '8px 16px', 
-                                                cursor: 'pointer', 
-                                                color: 'var(--text-muted)', 
-                                                fontSize: '0.78rem',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: 6
-                                            }}
-                                        >
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            {/* Crop Controls */}
+                            {showCoverCrop && (
+                                <div style={{ background: 'rgba(0,0,0,0.15)', padding: 12, borderRadius: 8, marginBottom: 12 }}>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>Görüntüyü kaydırarak konumlandırın:</div>
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <button type="button" onClick={() => setCoverCropData(p => ({ ...p, x: p.x - 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setCoverCropData(p => ({ ...p, x: p.x + 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setCoverCropData(p => ({ ...p, y: p.y - 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setCoverCropData(p => ({ ...p, y: p.y + 10 }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setCoverCropData(p => ({ ...p, scale: Math.max(0.5, p.scale - 0.1) }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setCoverCropData(p => ({ ...p, scale: Math.min(2, p.scale + 0.1) }))} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                        </button>
+                                        <button type="button" onClick={() => setCoverCropData({ x: 0, y: 0, scale: 1 })} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.75rem' }}>
                                             Sıfırla
                                         </button>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Dosya Yükleme ve Aksiyonlar */}
+                            {/* File Upload & Actions */}
                             {coverStatus.canUpdate && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     {pendingCover ? (
                                         <div style={{ display: 'flex', gap: 8 }}>
-                                            {!showCoverCrop && (
-                                                <button type="button" className="btn btn-secondary" onClick={startCoverCrop} style={{ flex: 1 }}>
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
-                                                    Kırp
-                                                </button>
-                                            )}
                                             <button type="button" className="btn btn-primary" onClick={saveCover} disabled={uploadingImage} style={{ flex: 1 }}>
-                                                {uploadingImage ? (
-                                                    <>
-                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8, animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                                                        Kaydediliyor...
-                                                    </>
-                                                ) : 'Kaydet'}
+                                                {uploadingImage ? 'Kaydediliyor...' : 'Kapak Resmini Kaydet'}
                                             </button>
-                                            {showCoverCrop ? (
-                                                <button type="button" className="btn btn-ghost" onClick={() => setShowCoverCrop(false)} style={{ flexShrink: 0 }}>
-                                                    Kırpma İptal
-                                                </button>
-                                            ) : (
-                                                <button type="button" className="btn btn-ghost" onClick={cancelCoverUpload} style={{ flexShrink: 0 }}>
-                                                    İptal
-                                                </button>
-                                            )}
+                                            <button type="button" className="btn btn-ghost" onClick={cancelCoverUpload} style={{ flexShrink: 0 }}>
+                                                İptal
+                                            </button>
                                         </div>
                                     ) : (
                                         <label style={{
                                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                             background: 'var(--bg-glass)', border: '1px dashed var(--border-color)',
-                                            borderRadius: '10px', padding: '16px', cursor: 'pointer',
-                                            fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-secondary)',
+                                            borderRadius: '8px', padding: '14px', cursor: 'pointer',
+                                            fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)',
                                             transition: 'all 0.2s'
                                         }}
                                         onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-light)'; }}
                                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                                         >
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                                             Cihazdan Kapak Resmi Seç
                                             <input
                                                 type="file"
@@ -1854,7 +1503,7 @@ const { settings: siteSettings } = useSettings() || {};
 
             {/* Reading List - now merged into favorites tab */}
             {tab === 'reading-list' && (
-                <div className="admin-card glass-panel" style={{ maxWidth: 500 }}>
+                <div className="admin-card" style={{ maxWidth: 500 }}>
                     <h3>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                         Şifreyi Değiştir

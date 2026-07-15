@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getVerifiedUser, hasAdminPanelAccess } from '@/lib/auth';
+import { getVerifiedUser } from '@/lib/auth';
 import { readFile, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -9,14 +9,15 @@ const BACKUP_DIR = path.join(process.cwd(), 'backups');
 
 export async function GET(request) {
     try {
-        const db = getDb();
-        const result = getVerifiedUser(request, db);
+        const result = getVerifiedUser(request);
         if (result.error) {
             return NextResponse.json({ error: result.error }, { status: result.status });
         }
         const { user: tokenUser } = result;
 
-        if (!hasAdminPanelAccess(tokenUser, db)) {
+        const db = getDb();
+        const dbUser = db.prepare('SELECT role FROM users WHERE id = ?').get(tokenUser.id);
+        if (!dbUser || !['admin', 'manager'].includes(dbUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 });
         }
 

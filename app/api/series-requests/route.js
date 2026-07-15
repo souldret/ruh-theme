@@ -1,17 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { requireAuth, hasPermission } from '@/lib/auth';
-
-// Aşama 2 — Admin note XSS koruması
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#x27;');
-}
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,8 +70,8 @@ export async function GET(request) {
 
         if (adminView) {
             const user = requireAuth(request);
-            if (!user || (!['admin', 'manager'].includes(user.role) && !hasPermission(user, 'manage_requests', db))) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+            if (!user || !['admin', 'manager'].includes(user.role)) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
             }
             const rows = db.prepare(`
                 SELECT * FROM series_requests ORDER BY
@@ -105,18 +94,17 @@ export async function GET(request) {
             return NextResponse.json({ requests: rows });
         }
 
-        // Public listing — approved/added/reviewing/rejected requests visible (NOT pending)
+        // Public listing — only approved/added/reviewing requests visible (NOT pending)
         // Pending requests require admin approval before public visibility
         const rows = db.prepare(`
             SELECT * FROM series_requests
-            WHERE status IN ('reviewing', 'approved', 'added', 'rejected')
+            WHERE status IN ('reviewing', 'approved', 'added')
             ORDER BY
                 CASE status
                     WHEN 'reviewing' THEN 0
                     WHEN 'approved' THEN 1
                     WHEN 'added' THEN 2
-                    WHEN 'rejected' THEN 3
-                    ELSE 4
+                    ELSE 3
                 END,
                 upvotes DESC, created_at DESC
         `).all();
@@ -151,8 +139,8 @@ export async function POST(request) {
 
         // ── Admin: update status ────────────────────────────────
         if (action === 'update-status') {
-            if (!currentUser || (!['admin', 'manager'].includes(currentUser.role) && !hasPermission(currentUser, 'manage_requests', db))) {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            if (!currentUser || !['admin', 'manager'].includes(currentUser.role)) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
             }
             const { id, status, admin_note } = body;
             if (!id || !status) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
@@ -171,7 +159,7 @@ export async function POST(request) {
                         msg = `"${req.series_title}" seri isteğiniz onaylandı! Yakında eklenecek.`;
                         notifType = 'series_request_approved';
                     } else if (status === 'rejected') {
-                        msg = `"${req.series_title}" seri isteğiniz reddedildi.${admin_note ? ` Not: ${escapeHtml(admin_note)}` : ''}`;
+                        msg = `"${req.series_title}" seri isteğiniz reddedildi.${admin_note ? ` Not: ${admin_note}` : ''}`;
                         notifType = 'series_request_rejected';
                     } else if (status === 'added') {
                         msg = `"${req.series_title}" seri isteğiniz sisteme eklendi!`;
@@ -209,8 +197,8 @@ export async function POST(request) {
 
         // ── Admin: delete ───────────────────────────────────────
         if (action === 'delete') {
-            if (!currentUser || (!['admin', 'manager'].includes(currentUser.role) && !hasPermission(currentUser, 'manage_requests', db))) {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            if (!currentUser || !['admin', 'manager'].includes(currentUser.role)) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
             }
             db.prepare('DELETE FROM series_requests WHERE id = ?').run(body.id);
             db.prepare('DELETE FROM series_request_votes WHERE request_id = ?').run(body.id);
@@ -262,23 +250,6 @@ export async function POST(request) {
         const { series_title, series_type, author, description, source_url, reason } = body;
         if (!series_title?.trim()) {
             return NextResponse.json({ error: 'Series title is required' }, { status: 400 });
-        }
-
-        // Aşama 2 — Alan uzunluk kontrolleri
-        if (series_title.trim().length > 200) {
-            return NextResponse.json({ error: 'Seri başlığı en fazla 200 karakter olabilir.' }, { status: 400 });
-        }
-        if (description && description.length > 2000) {
-            return NextResponse.json({ error: 'Açıklama en fazla 2000 karakter olabilir.' }, { status: 400 });
-        }
-        if (reason && reason.length > 1000) {
-            return NextResponse.json({ error: 'Neden alanı en fazla 1000 karakter olabilir.' }, { status: 400 });
-        }
-        if (source_url && source_url.length > 500) {
-            return NextResponse.json({ error: 'Kaynak URL en fazla 500 karakter olabilir.' }, { status: 400 });
-        }
-        if (author && author.length > 200) {
-            return NextResponse.json({ error: 'Yazar adı en fazla 200 karakter olabilir.' }, { status: 400 });
         }
 
         // Prevent duplicates: same user + same title within 7 days

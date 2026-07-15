@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { getAllBadges } from '@/lib/badges';
-import { createRateLimiter } from '@/lib/ratelimit';
 
-const badgesRateLimit = createRateLimiter(10, 60 * 1000); // 10 istek/dk
+import { getAllBadges } from '@/lib/badges';
 
 // Achievement badge definitions
 export const BADGES = [
@@ -130,15 +128,6 @@ export function checkAndAwardBadges(db, userId) {
 
 // GET /api/users/badges — get user's badges
 export async function GET(request) {
-    // Rate limit kontrolü
-    const rl = badgesRateLimit(request);
-    if (!rl.success) {
-        return NextResponse.json(
-            { error: `Çok fazla istek. ${rl.retryAfter} saniye sonra tekrar deneyin.` },
-            { status: 429 }
-        );
-    }
-
     const user = getUser(request);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -165,8 +154,6 @@ export async function GET(request) {
 
         return NextResponse.json({ badges: result, newBadges, customBadges });
     } catch (err) {
-        console.error('GET /api/users/badges error:', err);
-        const msg = process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message;
-        return NextResponse.json({ error: msg }, { status: 500 });
+        return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getVerifiedUser, hasAdminPanelAccess } from '@/lib/auth';
+import { getVerifiedUser } from '@/lib/auth';
 import { getAllBadges } from '@/lib/badges';
 
 function getDeletedBuiltinIds(db) {
@@ -24,7 +24,7 @@ export async function GET(request) {
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });
         const { user: adminUser } = result;
-        if (!hasAdminPanelAccess(adminUser, db)) {
+        if (!['admin', 'manager'].includes(adminUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
         }
 
@@ -55,7 +55,7 @@ export async function POST(request) {
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });
         const { user: adminUser } = result;
-        if (!hasAdminPanelAccess(adminUser, db)) {
+        if (!['admin', 'manager'].includes(adminUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
         }
 
@@ -103,7 +103,7 @@ export async function DELETE(request) {
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });
         const { user: adminUser } = result;
-        if (!hasAdminPanelAccess(adminUser, db)) {
+        if (!['admin', 'manager'].includes(adminUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 });
         }
 

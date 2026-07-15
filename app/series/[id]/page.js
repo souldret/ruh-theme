@@ -7,13 +7,13 @@ import SeriesDetailClient from '@/components/SeriesDetailClient';
 // Her istekte sunucu tarafında render et
 export const dynamic = 'force-dynamic';
 
-// Bot koruması: Yalnızca IP bazlı SHA-256 hash (PII saklanmaz)
-// NOT: User-Agent hash'ten çıkarıldı — farklı UA ile view şişirme saldırısını önler
+// Bot koruması: IP + UA SHA-256 hash (PII saklanmaz)
 function getViewerHash(headersList) {
     const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim()
         || headersList.get('x-real-ip')
         || 'unknown';
-    return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 32);
+    const ua = headersList.get('user-agent') || '';
+    return crypto.createHash('sha256').update(`${ip}:${ua}`).digest('hex').slice(0, 32);
 }
 
 export default async function SeriesDetailPage({ params }) {
@@ -53,52 +53,56 @@ export default async function SeriesDetailPage({ params }) {
         }
     } catch { /* görüntülenme takibi kritik değil, hata sayfa yüklenmesini engellemesin */ }
 
-    // ─── Bölümleri çek (yalnızca yayınlanmış / zamanı gelmiş) ──────────────
+    // ─── Bölümleri çek ───────────────────────────────────────────────────────
     const chaptersRaw = db.prepare(
-        "SELECT *, COALESCE(views, 0) as chapter_views FROM chapters WHERE series_id = ? AND (publish_at IS NULL OR publish_at <= datetime('now')) ORDER BY chapter_number ASC"
+        'SELECT *, COALESCE(views, 0) as chapter_views FROM chapters WHERE series_id = ? ORDER BY chapter_number ASC'
     ).all(series.id);
 
-    // read_count: chapter_views, tüm ziyaretçileri (misafir + üye) saatte 1 kez sayar.
-    // Bu tek ve tutarlı metriktir; read_history yalnızca giriş yapmış ve %70'i geçmiş
-    // kullanıcıları sayar (farklı popülasyon), Math.max karışıklığa yol açar.
+    // ─── read_history tablosundan benzersiz kullanıcı okuma sayısı ──────────
+    // UNIQUE(user_id, chapter_id) kısıtı sayesinde COUNT(*) = COUNT(DISTINCT user_id)
+    const readCounts = db.prepare(`
+        SELECT chapter_id, COUNT(*) as rh_count
+        FROM read_history
+        WHERE chapter_id IN (SELECT id FROM chapters WHERE series_id = ?)
+        GROUP BY chapter_id
+    `).all(series.id);
 
-    // ─── Yorum sayılarını çek ────────────────────────────────────────────────
-    let commentCountMap = {};
-    try {
-        // Performans: tüm tabloyu taramak yerine yalnızca bu serinin bölümlerine filtrele
-        const commentCounts = db.prepare(
-            "SELECT c.chapter_id, COUNT(*) as comment_count FROM comments c JOIN chapters ch ON ch.id = c.chapter_id WHERE c.chapter_id IS NOT NULL AND ch.series_id = ? GROUP BY c.chapter_id"
-        ).all(series.id);
-        for (const row of commentCounts) {
-            commentCountMap[row.chapter_id] = row.comment_count;
-        }
-    } catch { /* yorum tablosu yoksa veya hata olursa yoksay */ }
+    const readCountByChapter = {};
+    for (const row of readCounts) {
+        readCountByChapter[row.chapter_id] = row.rh_count;
+    }
 
+    // read_count: chapter.views (tüm ziyaretçiler) ile read_history sayısının büyüğü
+    // Bu, API /api/series/[id] ile birebir aynı formülü kullanır
     const chapters = chaptersRaw.map(ch => ({
         ...ch,
-        read_count: ch.chapter_views || 0,
-        comment_count: commentCountMap[ch.id] || 0,
+        read_count: Math.max(ch.chapter_views || 0, readCountByChapter[ch.id] || 0),
     }));
 
-    // Fetch related series (server-side) — SQL LIKE ile filtrele, JS'de 50 satır taramak yerine
+    // Fetch related series (server-side)
     let relatedSeries = [];
     try {
-        const seriesGenres = series.genres
+        const genres = series.genres
             ? (Array.isArray(series.genres)
                 ? series.genres
                 : (() => { try { return JSON.parse(series.genres); } catch { return []; } })())
             : [];
-        if (seriesGenres.length > 0) {
-            // Her tür için LIKE koşulu oluştur — JSON array içinde arama
-            const likeClauses = seriesGenres.map(() => `genres LIKE ?`).join(' OR ');
-            const likeParams = seriesGenres.map(g => `%"${g}"%`);
-            relatedSeries = db.prepare(`
+        if (genres.length > 0) {
+            const allSeries = db.prepare(`
                 SELECT id, title, slug, cover_url, genres, status, type, rating, views, is_adult,
                     (SELECT COUNT(*) FROM chapters c WHERE c.series_id = s.id) as chapter_count
                 FROM series s
-                WHERE published = 1 AND id != ? AND (${likeClauses})
-                LIMIT 6
-            `).all(series.id, ...likeParams);
+                WHERE published = 1 AND id != ?
+                LIMIT 50
+            `).all(series.id);
+            relatedSeries = allSeries.filter(s => {
+                const sg = s.genres
+                    ? (Array.isArray(s.genres)
+                        ? s.genres
+                        : (() => { try { return JSON.parse(s.genres); } catch { return []; } })())
+                    : [];
+                return genres.some(g => sg.includes(g));
+            }).slice(0, 6);
         }
     } catch { }
 

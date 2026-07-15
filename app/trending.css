@@ -243,8 +243,6 @@
   overflow: hidden;
   background: transparent;
   border: none;
-  /* CLS önlemi: sabit yükseklik görsel yüklenmeden alanı korur */
-  contain: layout style;
 }
 .trend-glass3d-card:hover {
   transform: rotateX(8deg) rotateY(-8deg) scale(1.05);
@@ -411,30 +409,6 @@
     background: linear-gradient(180deg, #ff4500, #ff8c00, #ffd700);
     animation: flameBorder 3s linear infinite;
   }
-}
-
-/* =========================================
-   CSS MARQUEE (SONSUZ KAYDIRMA - TAKILMASIZ)
-========================================= */
-.trend-marquee-outer {
-  overflow: hidden;
-  padding: 10px 0 20px 0;
-  /* Kenar fade efekti */
-  mask-image: linear-gradient(to right, transparent 0%, black 40px, black calc(100% - 40px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 40px, black calc(100% - 40px), transparent 100%);
-}
-
-.trend-marquee-track {
-  display: flex;
-  gap: 16px;
-  width: max-content;
-  animation: trend-marquee-scroll linear infinite;
-  will-change: transform;
-}
-
-@keyframes trend-marquee-scroll {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
 }
 
 /* =========================================

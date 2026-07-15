@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getVerifiedUser, hasAdminPanelAccess } from '@/lib/auth';
+import { getVerifiedUser } from '@/lib/auth';
 import { BADGE_OPTIONS } from '@/lib/badges';
 
 export function getCustomBadgesFromDb(db) {
@@ -30,7 +30,7 @@ function saveCustomBadges(db, badges) {
 function requireAdmin(request, db) {
     const result = getVerifiedUser(request, db);
     if (result.error) return { error: result.error, status: result.status };
-    if (!hasAdminPanelAccess(result.user, db)) return { error: 'Yetkisiz', status: 403 };
+    if (!['admin', 'manager'].includes(result.user.role)) return { error: 'Yetkisiz', status: 403 };
     return { user: result.user };
 }
 

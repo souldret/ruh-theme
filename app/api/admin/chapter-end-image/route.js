@@ -1,16 +1,14 @@
-﻿import { NextResponse } from 'next/server';
-import { requireAuth, hasAdminPanelAccess } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 
 export async function POST(request) {
     try {
-        const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) throw new Error('Forbidden');
+        requireAdmin(request);
     } catch {
-        return NextResponse.json({ error: 'Yetkisiz eriÅŸim' }, { status: 401 });
+        return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }
 
     try {
@@ -18,12 +16,12 @@ export async function POST(request) {
         const file = formData.get('chapter_end_image');
 
         if (!file || typeof file.arrayBuffer !== 'function') {
-            return NextResponse.json({ error: 'GÃ¶rsel dosyasÄ± gerekli' }, { status: 400 });
+            return NextResponse.json({ error: 'Görsel dosyası gerekli' }, { status: 400 });
         }
 
         const allowedTypes = ['image/png', 'image/webp', 'image/jpeg', 'image/jpg'];
         if (!allowedTypes.includes(file.type)) {
-            return NextResponse.json({ error: 'Sadece PNG, WebP veya JPEG dosyalarÄ± kabul edilir' }, { status: 400 });
+            return NextResponse.json({ error: 'Sadece PNG, WebP veya JPEG dosyaları kabul edilir' }, { status: 400 });
         }
 
         const imgDir = path.join(process.cwd(), 'public', 'uploads', 'chapter-end-image');
@@ -46,20 +44,18 @@ export async function POST(request) {
         db.prepare('INSERT OR REPLACE INTO app_settings (setting_key, setting_value) VALUES (?, ?)').run('chapter_end_image_path', publicPath);
         db.prepare('INSERT OR REPLACE INTO app_settings (setting_key, setting_value) VALUES (?, ?)').run('chapter_end_image_abs_path', filePath);
 
-        return NextResponse.json({ path: publicPath, message: 'BÃ¶lÃ¼m sonu gÃ¶rseli baÅŸarÄ±yla yÃ¼klendi' });
+        return NextResponse.json({ path: publicPath, message: 'Bölüm sonu görseli başarıyla yüklendi' });
     } catch (err) {
-        console.error('BÃ¶lÃ¼m sonu gÃ¶rseli yÃ¼kleme hatasÄ±:', err);
-        return NextResponse.json({ error: 'GÃ¶rsel yÃ¼klenemedi: ' + err.message }, { status: 500 });
+        console.error('Bölüm sonu görseli yükleme hatası:', err);
+        return NextResponse.json({ error: 'Görsel yüklenemedi: ' + err.message }, { status: 500 });
     }
 }
 
 export async function DELETE(request) {
     try {
-        const user = requireAuth(request);
-        const db2 = getDb();
-        if (!hasAdminPanelAccess(user, db2)) throw new Error('Forbidden');
+        requireAdmin(request);
     } catch {
-        return NextResponse.json({ error: 'Yetkisiz eriÅŸim' }, { status: 401 });
+        return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }
 
     try {
@@ -72,8 +68,8 @@ export async function DELETE(request) {
 
         db.prepare("DELETE FROM app_settings WHERE setting_key IN ('chapter_end_image_path', 'chapter_end_image_abs_path')").run();
 
-        return NextResponse.json({ message: 'BÃ¶lÃ¼m sonu gÃ¶rseli silindi' });
+        return NextResponse.json({ message: 'Bölüm sonu görseli silindi' });
     } catch (err) {
-        return NextResponse.json({ error: 'GÃ¶rsel silinemedi: ' + err.message }, { status: 500 });
+        return NextResponse.json({ error: 'Görsel silinemedi: ' + err.message }, { status: 500 });
     }
 }

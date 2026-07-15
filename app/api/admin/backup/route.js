@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getVerifiedUser, hasAdminPanelAccess } from '@/lib/auth';
-import { readdir, readFile, writeFile, mkdir, unlink, stat } from 'fs/promises';
+import { getVerifiedUser } from '@/lib/auth';
+import { readdir, readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+import { createReadStream, createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
 
 // Backup directory
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
 const MAX_BACKUPS = 7; // Keep last 7 backups
-const BACKUP_COOLDOWN_MS = 60_000; // 60 saniye — burst koruma
 
 // Format bytes to human readable
 function formatBytes(bytes) {
@@ -19,20 +20,7 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-/**
- * Güvenlik: backupId'yi doğrula ve çözümlenen path'in BACKUP_DIR içinde kaldığını kontrol et.
- * Path traversal saldırısını önler (örn. id=../../.env.local).
- */
-function resolveBackupPath(backupId) {
-    // Yalnızca backup_<timestamp> formatına izin ver
-    if (!backupId || !/^backup_\d+$/.test(backupId)) return null;
-    const resolved = path.join(BACKUP_DIR, `${backupId}.json`);
-    // Çözümlenen path BACKUP_DIR içinde kalmalı
-    if (!resolved.startsWith(BACKUP_DIR + path.sep) && resolved !== BACKUP_DIR) return null;
-    return resolved;
-}
-
-// Get all backups — sidecar meta dosyasından okur (büyük JSON parse etmez)
+// Get all backups
 export async function GET(request) {
     try {
         const db = getDb();
@@ -42,7 +30,7 @@ export async function GET(request) {
         }
         const { user: tokenUser } = result;
 
-        if (!tokenUser || !hasAdminPanelAccess(tokenUser, db)) {
+        if (!tokenUser || !['admin', 'manager'].includes(tokenUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 });
         }
 
@@ -55,52 +43,30 @@ export async function GET(request) {
         const backups = [];
 
         for (const entry of entries) {
-            if (!entry.endsWith('.json') || entry.endsWith('.meta.json')) continue;
-            const backupId = entry.replace('.json', '');
-            // Güvenlik: yalnızca geçerli backup_<timestamp> isimli dosyaları işle
-            if (!/^backup_\d+$/.test(backupId)) continue;
-
-            const metaPath = path.join(BACKUP_DIR, `${backupId}.meta.json`);
-            try {
-                // Sidecar meta dosyası varsa küçük meta'yı oku (büyük JSON parse etme)
-                if (existsSync(metaPath)) {
-                    const meta = JSON.parse(await readFile(metaPath, 'utf-8'));
-                    const fileStats = await stat(path.join(BACKUP_DIR, entry));
-                    backups.push({
-                        id: backupId,
-                        name: entry,
-                        createdAt: meta.createdAt,
-                        size: meta.size ?? fileStats.size,
-                        sizeFormatted: formatBytes(meta.size ?? fileStats.size),
-                        seriesCount: meta.seriesCount ?? 0,
-                        chaptersCount: meta.chaptersCount ?? 0,
-                        usersCount: meta.usersCount ?? 0,
-                        commentsCount: meta.commentsCount ?? 0,
-                    });
-                } else {
-                    // Eski backuplarda meta dosyası yok — tam dosyayı parse et (bir kerelik)
-                    const content = await readFile(path.join(BACKUP_DIR, entry), 'utf-8');
+            if (entry.endsWith('.json')) {
+                const filePath = path.join(BACKUP_DIR, entry);
+                try {
+                    const content = await readFile(filePath, 'utf-8');
                     const data = JSON.parse(content);
-                    const size = Buffer.byteLength(content, 'utf-8');
-                    const meta = {
+                    backups.push({
+                        id: entry.replace('.json', ''),
+                        name: entry,
+                        path: filePath,
                         createdAt: data.createdAt,
-                        size,
-                        seriesCount: data.data?.series?.length ?? 0,
-                        chaptersCount: data.data?.chapters?.length ?? 0,
-                        usersCount: data.data?.users?.length ?? 0,
-                        commentsCount: data.data?.comments?.length ?? 0,
-                    };
-                    // Sidecar meta oluştur — bir dahaki seferde hızlı okuma için
-                    await writeFile(metaPath, JSON.stringify(meta)).catch(() => {});
-                    backups.push({ id: backupId, name: entry, sizeFormatted: formatBytes(size), ...meta });
-                }
-            } catch {}
+                        size: data.size,
+                        sizeFormatted: formatBytes(data.size),
+                        seriesCount: data.data?.series?.length || 0,
+                        chaptersCount: data.data?.chapters?.length || 0,
+                        usersCount: data.data?.users?.length || 0,
+                        commentsCount: data.data?.comments?.length || 0,
+                    });
+                } catch {}
+            }
         }
 
         // Sort by newest first
         backups.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        // path field'ı dönme — sunucu dosya sistemi yapısını sızdırma
         return NextResponse.json({ backups });
     } catch (error) {
         console.error('GET /api/admin/backup error:', error);
@@ -118,7 +84,7 @@ export async function POST(request) {
         }
         const { user: tokenUser } = result;
 
-        if (!tokenUser || !hasAdminPanelAccess(tokenUser, db)) {
+        if (!tokenUser || !['admin', 'manager'].includes(tokenUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 });
         }
 
@@ -131,22 +97,6 @@ export async function POST(request) {
         }
 
         if (action === 'create') {
-            // Rate limiting: son backup'tan bu yana BACKUP_COOLDOWN_MS geçmiş mi?
-            try {
-                const existing = await readdir(BACKUP_DIR);
-                const jsonFiles = existing.filter(e => /^backup_\d+\.json$/.test(e));
-                if (jsonFiles.length > 0) {
-                    const timestamps = jsonFiles.map(e => parseInt(e.replace('backup_', '').replace('.json', ''), 10));
-                    const latest = Math.max(...timestamps);
-                    if (Date.now() - latest < BACKUP_COOLDOWN_MS) {
-                        return NextResponse.json(
-                            { error: `Lütfen ${Math.ceil(BACKUP_COOLDOWN_MS / 1000)} saniye bekleyip tekrar deneyin.` },
-                            { status: 429 }
-                        );
-                    }
-                }
-            } catch {}
-
             // Export all data
             const backupId = `backup_${Date.now()}`;
             const timestamp = new Date().toISOString();
@@ -156,7 +106,7 @@ export async function POST(request) {
                 try { return db.prepare(sql).all(); } catch { return []; }
             }
 
-            // Get all data from database — şifre/token alanları hariç
+            // Get all data from database
             const series = safeQuery('SELECT * FROM series');
             const chapters = safeQuery('SELECT * FROM chapters');
             const users = safeQuery('SELECT id, username, email, role, yomi_points, created_at FROM users');
@@ -184,39 +134,35 @@ export async function POST(request) {
             };
 
             const backupPath = path.join(BACKUP_DIR, `${backupId}.json`);
-            // Pretty-print olmadan yaz — %20-30 daha küçük dosya
-            const jsonContent = JSON.stringify(backupData);
+            const jsonContent = JSON.stringify(backupData, null, 2);
             await writeFile(backupPath, jsonContent);
 
-            // Dosya boyutunu hesapla
-            const fileStats = await stat(backupPath);
-
-            // Sidecar meta dosyası oluştur — GET handler'da hızlı okuma için
-            const metaData = {
-                createdAt: timestamp,
-                size: fileStats.size,
-                seriesCount: series.length,
-                chaptersCount: chapters.length,
-                usersCount: users.length,
-                commentsCount: comments.length,
-            };
-            await writeFile(
-                path.join(BACKUP_DIR, `${backupId}.meta.json`),
-                JSON.stringify(metaData)
-            ).catch(() => {});
+            // Calculate file size
+            const { stat } = await import('fs/promises');
+            const stats = await stat(backupPath);
 
             // Clean up old backups (keep only MAX_BACKUPS)
             const entries = await readdir(BACKUP_DIR);
-            const backupFiles = entries
-                .filter(e => /^backup_\d+\.json$/.test(e))
-                .map(e => ({ name: e, ts: parseInt(e.replace('backup_', '').replace('.json', ''), 10) }))
-                .sort((a, b) => b.ts - a.ts);
+            const backupFiles = [];
+            for (const e of entries) {
+                if (e.endsWith('.json')) {
+                    try {
+                        const content = await readFile(path.join(BACKUP_DIR, e), 'utf-8');
+                        const data = JSON.parse(content);
+                        backupFiles.push({
+                            name: e,
+                            path: path.join(BACKUP_DIR, e),
+                            createdAt: new Date(data.createdAt)
+                        });
+                    } catch {}
+                }
+            }
+            backupFiles.sort((a, b) => b.createdAt - a.createdAt);
 
             if (backupFiles.length > MAX_BACKUPS) {
                 const toDelete = backupFiles.slice(MAX_BACKUPS);
                 for (const file of toDelete) {
-                    await unlink(path.join(BACKUP_DIR, file.name)).catch(() => {});
-                    await unlink(path.join(BACKUP_DIR, file.name.replace('.json', '.meta.json'))).catch(() => {});
+                    await unlink(file.path).catch(() => {});
                 }
             }
 
@@ -227,12 +173,10 @@ export async function POST(request) {
                     id: backupId,
                     name: `${backupId}.json`,
                     createdAt: timestamp,
-                    size: fileStats.size,
-                    sizeFormatted: formatBytes(fileStats.size),
+                    size: stats.size,
+                    sizeFormatted: formatBytes(stats.size),
                     seriesCount: series.length,
                     chaptersCount: chapters.length,
-                    usersCount: users.length,
-                    commentsCount: comments.length,
                 }
             });
         }
@@ -244,7 +188,7 @@ export async function POST(request) {
     }
 }
 
-// Delete backup
+// Restore or delete backup
 export async function DELETE(request) {
     try {
         const db = getDb();
@@ -254,7 +198,7 @@ export async function DELETE(request) {
         }
         const { user: tokenUser } = result;
 
-        if (!tokenUser || !hasAdminPanelAccess(tokenUser, db)) {
+        if (!tokenUser || !['admin', 'manager'].includes(tokenUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 });
         }
 
@@ -263,15 +207,9 @@ export async function DELETE(request) {
         const backupId = searchParams.get('id');
 
         if (action === 'delete' && backupId) {
-            // Güvenlik: path traversal koruması
-            const backupPath = resolveBackupPath(backupId);
-            if (!backupPath) {
-                return NextResponse.json({ error: 'Geçersiz yedek ID' }, { status: 400 });
-            }
+            const backupPath = path.join(BACKUP_DIR, `${backupId}.json`);
             if (existsSync(backupPath)) {
                 await unlink(backupPath);
-                // Sidecar meta dosyasını da sil
-                await unlink(backupPath.replace('.json', '.meta.json')).catch(() => {});
                 return NextResponse.json({ success: true, message: 'Yedek silindi' });
             }
             return NextResponse.json({ error: 'Yedek bulunamadı' }, { status: 404 });

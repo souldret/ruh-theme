@@ -66,8 +66,8 @@ export async function POST(request) {
     if (!seriesId || isNaN(seriesId)) {
       return NextResponse.json({ error: 'seriesId gerekli' }, { status: 400 });
     }
-    if (!rating || rating < 1 || rating > 5) {
-      return NextResponse.json({ error: 'Puan 1-5 arasında olmalıdır' }, { status: 400 });
+    if (!rating || rating < 1 || rating > 10) {
+      return NextResponse.json({ error: 'Puan 1-10 arasında olmalıdır' }, { status: 400 });
     }
 
     const db = getDb();

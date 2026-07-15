@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireAuth, hasAdminPanelAccess } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 
 export async function POST(request) {
     try {
-        const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) throw new Error('Forbidden');
+        requireAdmin(request);
     } catch {
         return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }
@@ -55,9 +53,7 @@ export async function POST(request) {
 
 export async function DELETE(request) {
     try {
-        const user = requireAuth(request);
-        const db2 = getDb();
-        if (!hasAdminPanelAccess(user, db2)) throw new Error('Forbidden');
+        requireAdmin(request);
     } catch {
         return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }

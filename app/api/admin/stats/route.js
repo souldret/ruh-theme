@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getVerifiedUser, hasAdminPanelAccess } from '@/lib/auth';
+import { getVerifiedUser } from '@/lib/auth';
 import { readdir, stat } from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -47,13 +47,14 @@ export async function GET(request) {
         }
         const { user: tokenUser } = result;
 
-        if (!hasAdminPanelAccess(tokenUser, db)) {
+        const dbUser = db.prepare('SELECT role FROM users WHERE id = ?').get(tokenUser.id);
+        if (!dbUser || !['admin', 'manager'].includes(dbUser.role)) {
             return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 });
         }
 
         // Get storage info
-        const publicDir = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public');
-        const uploadsDir = path.join(/*turbopackIgnore: true*/ publicDir, 'uploads');
+        const publicDir = path.join(process.cwd(), 'public');
+        const uploadsDir = path.join(publicDir, 'uploads');
         const dbPath = process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : path.join(process.cwd(), 'data', 'manga.db');
 
         let uploadsSize = 0;

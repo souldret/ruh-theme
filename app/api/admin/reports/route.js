@@ -1,16 +1,16 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { requireAuth, hasAdminPanelAccess } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(request) {
     try {
         const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!user || !['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
 
+        const db = getDb();
         const reports = db.prepare(`
             SELECT r.*, u.username as username, u.email as email,
                    c.chapter_number, s.title as series_title
@@ -32,8 +32,7 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!user || !['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -43,6 +42,8 @@ export async function POST(request) {
         if (!id || !status) {
             return NextResponse.json({ success: false, error: 'Id and status are required' }, { status: 400 });
         }
+
+        const db = getDb();
 
         // Güncellenmeden önce rapor bilgilerini al (bildirim için)
         const report = db.prepare('SELECT * FROM bug_reports WHERE id = ?').get(id);
@@ -85,6 +86,7 @@ export async function POST(request) {
                 }
             } catch (notifErr) {
                 console.error('Bildirim gönderme hatası:', notifErr);
+                // Bildirim hatası ana işlemi engellemesin
             }
         }
 
@@ -98,8 +100,7 @@ export async function POST(request) {
 export async function DELETE(request) {
     try {
         const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!user || !['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -110,6 +111,7 @@ export async function DELETE(request) {
             return NextResponse.json({ success: false, error: 'Id is required' }, { status: 400 });
         }
 
+        const db = getDb();
         db.prepare('DELETE FROM bug_reports WHERE id = ?').run(id);
 
         return NextResponse.json({ success: true, message: 'Rapor silindi' });

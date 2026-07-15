@@ -27,13 +27,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (event.request.method !== 'GET') return;
-
-  const url = new URL(event.request.url);
-
-  // Skip non-http/https requests (chrome-extension, file://, etc.)
-  if (!url.protocol.startsWith('http')) return;
-
+  
   // Skip API and auth routes
+  const url = new URL(event.request.url);
   if (url.pathname.startsWith('/api/')) return;
 
   event.respondWith(

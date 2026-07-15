@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin, requireAuth, hasPermission, hasAdminPanelAccess } from '@/lib/auth';
+import { requireAdmin, requireAuth, hasPermission } from '@/lib/auth';
 import { getDb, generateSlug } from '@/lib/db';
 import {
     scrapeSeriesInfo,
@@ -64,17 +64,14 @@ async function downloadCover(imageUrl, title) {
 // actions: fetch-info | add-source | import-chapters | sync-source | delete-source | publish-pending
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function POST(request) {
-    let user;
-    try { user = requireAuth(request); } catch {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
     try {
-        const db = getDb();
-        if (!hasPermission(user, 'upload_chapters', db) && !hasPermission(user, 'manage_chapters', db) && !hasAdminPanelAccess(user, db)) {
+        const user = requireAuth(request);
+        if (!hasPermission(user, 'upload_chapters') && !['admin', 'manager'].includes(user.role) && user.role !== 'manager') {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
         const body = await request.json();
         const { action } = body;
+        const db = getDb();
 
         // ── fetch-info: preview series info from URL without saving ──────────────
         if (action === 'fetch-info') {
@@ -393,15 +390,12 @@ export async function POST(request) {
 // GET /api/admin/scrape?action=all  → all sources across all series
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function GET(request) {
-    let user;
-    try { user = requireAuth(request); } catch {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
     try {
-        const db = getDb();
-        if (!hasPermission(user, 'upload_chapters', db) && !hasPermission(user, 'manage_chapters', db) && !hasAdminPanelAccess(user, db)) {
+        const user = requireAuth(request);
+        if (!hasPermission(user, 'upload_chapters') && !['admin', 'manager'].includes(user.role) && user.role !== 'manager') {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
+        const db = getDb();
         const { searchParams } = new URL(request.url);
         const seriesId = searchParams.get('seriesId');
         const action = searchParams.get('action');

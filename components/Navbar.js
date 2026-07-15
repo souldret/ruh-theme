@@ -1,16 +1,10 @@
 'use client';
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
-import { useSettings } from './SettingsProvider';
-import TurnstileWidget from './TurnstileWidget';
 
 export default function Navbar({ siteSettings = {} }) {
-    const router = useRouter();
-    const { user, logout, loading, authFetch, login, register } = useAuth();
-    const { settings } = useSettings() || {};
+    const { user, logout, loading, authFetch } = useAuth();
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
@@ -28,112 +22,12 @@ export default function Navbar({ siteSettings = {} }) {
     const notifRef = useRef(null);
     const userMenuRef = useRef(null);
 
-    // Auth modal state
-    const [authModal, setAuthModal] = useState(null); // 'login' | 'register' | null
-    const [authEmail, setAuthEmail] = useState('');
-    const [authPassword, setAuthPassword] = useState('');
-    const [authUsername, setAuthUsername] = useState('');
-    const [authConfirmPassword, setAuthConfirmPassword] = useState('');
-    const [authError, setAuthError] = useState('');
-    const [isFormSubmitting, setIsFormSubmitting] = useState(false);
-    const [authMounted, setAuthMounted] = useState(false);
-    // Bildirim silme inline onay state'i (native confirm() yerine)
-    const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
-    const [authTurnstileToken, setAuthTurnstileToken] = useState('');
-    useEffect(() => { setAuthMounted(true); }, []);
-
-    // Logo URL'sini stabilize et — Date.now() her render'da yeni değer üretir,
-    // bu da img'nin tekrar yüklenmesine ve gereksiz re-render'a yol açar
-    const logoUrl = useMemo(() => {
-        if (!siteSettings.logo_url) return null;
-        return `${siteSettings.logo_url}${siteSettings.logo_url.includes('?') ? '&' : '?'}v=1`;
-    }, [siteSettings.logo_url]);
-
-    // Esc ile modal kapat + body scroll kilidi
-    useEffect(() => {
-        if (!authModal) {
-            document.body.style.overflow = '';
-            return;
-        }
-        document.body.style.overflow = 'hidden';
-        function handleEsc(e) { if (e.key === 'Escape') closeAuthModal(); }
-        window.addEventListener('keydown', handleEsc);
-        return () => {
-            window.removeEventListener('keydown', handleEsc);
-            document.body.style.overflow = '';
-        };
-    }, [authModal]);
-
-    function openAuthModal(type) {
-        setAuthModal(type);
-        setAuthError('');
-        setAuthEmail(''); setAuthPassword('');
-        setAuthUsername(''); setAuthConfirmPassword('');
-        setAuthTurnstileToken('');
-    }
-    function closeAuthModal() {
-        setAuthModal(null);
-        setAuthError('');
-        setAuthTurnstileToken('');
-    }
-
-    async function handleAuthLogin(e) {
-        e.preventDefault();
-        setAuthError('');
-        // Check turnstile if configured (skip if disabled via env)
-        const turnstileSiteKey = settings?.turnstile_site_key;
-        const turnstileDisabled = process.env.NEXT_PUBLIC_DISABLE_TURNSTILE === '1';
-        if (turnstileSiteKey && !authTurnstileToken && !turnstileDisabled) {
-            setAuthError('Lütfen insan doğrulamasını tamamlayın.');
-            return;
-        }
-        setIsFormSubmitting(true);
-        try {
-            await login(authEmail, authPassword, authTurnstileToken);
-            closeAuthModal();
-            router.push('/');
-        } catch (err) {
-            setAuthError(err.message);
-            setAuthTurnstileToken('');
-        } finally {
-            setIsFormSubmitting(false);
-        }
-    }
-
-    async function handleAuthRegister(e) {
-        e.preventDefault();
-        setAuthError('');
-        if (authPassword !== authConfirmPassword) { setAuthError('Şifre eşleşmiyor'); return; }
-        if (authPassword.length < 6) { setAuthError('Şifre en az 6 karakter olmalıdır'); return; }
-        // Check turnstile if configured (skip if disabled via env)
-        const turnstileSiteKey = settings?.turnstile_site_key;
-        const turnstileDisabled = process.env.NEXT_PUBLIC_DISABLE_TURNSTILE === '1';
-        if (turnstileSiteKey && !authTurnstileToken && !turnstileDisabled) {
-            setAuthError('Lütfen insan doğrulamasını tamamlayın.');
-            return;
-        }
-        setIsFormSubmitting(true);
-        try {
-            await register(authUsername, authEmail, authPassword, authTurnstileToken);
-            closeAuthModal();
-            router.push('/');
-        } catch (err) {
-            setAuthError(err.message);
-            setAuthTurnstileToken('');
-        } finally {
-            setIsFormSubmitting(false);
-        }
-    }
-
     // Custom roles for admin panel visibility check
     const [customRoles, setCustomRoles] = useState([]);
 
-    // Custom roles — yalnızca yönetici rollerine sahip kullanıcılar için çek
-    // Normal kullanıcılar için gereksiz authenticated request önlenir
+    // Fetch custom roles (only when user is logged in)
     useEffect(() => {
         if (!user) return;
-        // Açıkça normal kullanıcıysa custom role fetch yapmaya gerek yok
-        if (user.role === 'user') return;
         async function fetchCustomRoles() {
             try {
                 const res = await authFetch('/api/admin/users?action=list-custom-roles');
@@ -165,28 +59,19 @@ export default function Navbar({ siteSettings = {} }) {
     // Okuma geçmişi artık ayrı /gecmis sayfasında gösteriliyor
 
     useEffect(() => {
-        let rafId = null;
         function handleScroll() {
-            // rAF throttle — her scroll event'te state güncellemesi yerine
-            // sadece bir sonraki frame'de işlem yap, jank önler
-            if (rafId) return;
-            rafId = requestAnimationFrame(() => {
-                rafId = null;
-                const currentY = window.scrollY;
-                if (currentY > lastScrollY.current && currentY > 100) {
-                    setHidden(true);
-                } else if (currentY < lastScrollY.current || currentY <= 100) {
-                    setHidden(false);
-                }
-                lastScrollY.current = currentY;
-            });
+            if (window.scrollY > lastScrollY.current && window.scrollY > 100) {
+                // Scrolling down past 100px
+                setHidden(true);
+            } else if (window.scrollY < lastScrollY.current || window.scrollY <= 100) {
+                // Scrolling up or at the top
+                setHidden(false);
+            }
+            lastScrollY.current = window.scrollY;
         }
 
         window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => {
-            window.removeEventListener('scroll', handleScroll);
-            if (rafId) cancelAnimationFrame(rafId);
-        };
+        return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
     // Close dropdowns on outside click
@@ -204,13 +89,6 @@ export default function Navbar({ siteSettings = {} }) {
         setMobileMenuOpen(false);
         if (!user) setUserMenuOpen(false);
     }, [user]);
-
-    // Close mobile menu when navbar is hidden (scrolled down)
-    useEffect(() => {
-        if (hidden) {
-            setMobileMenuOpen(false);
-        }
-    }, [hidden]);
 
     async function markAllRead() {
         try {
@@ -248,13 +126,7 @@ export default function Navbar({ siteSettings = {} }) {
     }
 
     async function deleteAllNotifications() {
-        if (!confirmDeleteAll) {
-            setConfirmDeleteAll(true);
-            // 4 saniye sonra onay state'ini sıfırla
-            setTimeout(() => setConfirmDeleteAll(false), 4000);
-            return;
-        }
-        setConfirmDeleteAll(false);
+        if (!confirm('Tüm bildirimleri silmek istediğinize emin misiniz?')) return;
         try {
             await authFetch(`/api/notifications`, { method: 'DELETE' });
             setNotifications([]);
@@ -311,9 +183,9 @@ export default function Navbar({ siteSettings = {} }) {
             <nav className={`navbar ${hidden ? 'hidden' : ''}`}>
                 <div className="navbar-inner">
                     <Link href="/" className="navbar-logo">
-                        {logoUrl ? (
+                        {siteSettings.logo_url ? (
                             <img
-                                src={logoUrl}
+                                src={`${siteSettings.logo_url}${siteSettings.logo_url.includes('?') ? '&' : '?'}v=${Date.now()}`}
                                 alt={siteSettings.site_name || 'Logo'}
                                 style={{ height: 44, maxWidth: 220, width: 'auto', objectFit: 'contain', display: 'block' }}
                             />
@@ -349,7 +221,7 @@ export default function Navbar({ siteSettings = {} }) {
                         {/* Notification Bell – only when logged in */}
                         {!loading && user && (
                             <div className="notif-bell-wrapper" ref={notifRef}>
-                                <button className="nav-icon-btn" onClick={() => { setNotifOpen(!notifOpen); }} aria-label="Notifications">
+                                <button className="nav-icon-btn" onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen && unreadCount > 0) markAllRead(); }} aria-label="Notifications">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
                                     {unreadCount > 0 && <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
                                 </button>
@@ -359,31 +231,14 @@ export default function Navbar({ siteSettings = {} }) {
                                             <span>Bildirimler</span>
                                             <div style={{ display: 'flex', gap: '10px' }}>
                                                 {unreadCount > 0 && <button onClick={markAllRead} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>Tümünü okundu işaretle</button>}
-                                                {notifications.length > 0 && (
-                                                    <button
-                                                        onClick={deleteAllNotifications}
-                                                        style={{
-                                                            background: confirmDeleteAll ? 'rgba(245,54,92,0.15)' : 'none',
-                                                            border: confirmDeleteAll ? '1px solid rgba(245,54,92,0.4)' : 'none',
-                                                            borderRadius: 4,
-                                                            color: 'var(--danger)',
-                                                            cursor: 'pointer',
-                                                            fontSize: '0.78rem',
-                                                            fontWeight: 600,
-                                                            padding: confirmDeleteAll ? '2px 6px' : '0',
-                                                            transition: 'all 0.2s',
-                                                        }}
-                                                    >
-                                                        {confirmDeleteAll ? 'Emin misin? Evet →' : 'Tümünü Sil'}
-                                                    </button>
-                                                )}
+                                                {notifications.length > 0 && <button onClick={deleteAllNotifications} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>Tümünü Sil</button>}
                                             </div>
                                         </div>
                                         {notifications.length === 0 ? (
                                             <div className="notif-empty">Henüz bildiriminiz yok</div>
                                         ) : (
                                             notifications.slice(0, 15).map(n => (
-                                                <div key={n.id} style={{ display: 'flex', alignItems: 'center' }} className={`notif-item-wrap ${!n.is_read ? 'unread' : ''}`}>
+                                                <div key={n.id} style={{ position: 'relative', display: 'flex' }} className={`notif-item-wrap ${!n.is_read ? 'unread' : ''}`}>
                                                     <a href={n.link || '#'} className={`notif-item`} onClick={() => setNotifOpen(false)} style={{ flex: 1 }}>
                                                         <div className="notif-icon">
                                                             {n.type === 'reply' ? (
@@ -407,7 +262,7 @@ export default function Navbar({ siteSettings = {} }) {
                                                             <span className="notif-time">{timeAgo(n.created_at)}</span>
                                                         </div>
                                                     </a>
-                                                    <div className="notif-actions" style={{ display: 'flex', gap: 4, alignItems: 'center', paddingLeft: 4, flexShrink: 0 }}>
+                                                    <div className="notif-actions" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 4, background: 'var(--surface-color)', paddingLeft: 4, opacity: 0, transition: 'opacity 0.2s' }}>
                                                         {!n.is_read && (
                                                             <button onClick={(e) => markAsRead(e, n.id)} title="Okundu İşaretle" style={{ background: 'none', border: 'none', color: 'var(--success)', cursor: 'pointer', padding: 4 }}>
                                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
@@ -508,8 +363,8 @@ export default function Navbar({ siteSettings = {} }) {
                                 /* Not logged-in: show auth buttons on desktop + hamburger on mobile */
                                 <>
                                     <div className="auth-buttons">
-                                        <button className="btn btn-ghost" onClick={() => openAuthModal('login')}>Giriş Yap</button>
-                                        <button className="btn btn-primary" onClick={() => openAuthModal('register')}>Kayıt Ol</button>
+                                        <Link href="/login" className="btn btn-ghost">Giriş Yap</Link>
+                                        <Link href="/register" className="btn btn-primary">Kayıt Ol</Link>
                                     </div>
                                     <button
                                         className="nav-icon-btn mobile-menu-btn"
@@ -574,13 +429,6 @@ export default function Navbar({ siteSettings = {} }) {
                 <>
                     <div className="mobile-nav-overlay" onClick={closeMobileMenu} />
                     <div className="mobile-nav-panel">
-                        <button
-                            className="mobile-nav-close-btn"
-                            onClick={closeMobileMenu}
-                            aria-label="Menüyü kapat"
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                        </button>
                         <Link href="/" className="mobile-nav-item" onClick={closeMobileMenu}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
                             Ana Sayfa
@@ -598,132 +446,16 @@ export default function Navbar({ siteSettings = {} }) {
                             İstekler
                         </Link>
                         <div className="mobile-nav-divider" />
-                        <button className="mobile-nav-item" onClick={() => { closeMobileMenu(); openAuthModal('login'); }}>
+                        <Link href="/login" className="mobile-nav-item" onClick={closeMobileMenu}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>
                             Giriş Yap
-                        </button>
-                        <button className="mobile-nav-item mobile-nav-signup" onClick={() => { closeMobileMenu(); openAuthModal('register'); }}>
+                        </Link>
+                        <Link href="/register" className="mobile-nav-item mobile-nav-signup" onClick={closeMobileMenu}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></svg>
                             Kayıt Ol
-                        </button>
+                        </Link>
                     </div>
                 </>
-            )}
-
-            {/* Auth Modal - Glassmorphism Popup */}
-            {authMounted && authModal && createPortal(
-                <div
-                    className="auth-modal-overlay"
-                    onClick={(e) => { if (e.target === e.currentTarget) closeAuthModal(); }}
-                >
-                    <div className="auth-modal-card">
-                        {/* Tab switcher */}
-                        <div className="auth-modal-tabs">
-                            <button
-                                className={`auth-modal-tab ${authModal === 'login' ? 'active' : ''}`}
-                                onClick={() => { setAuthModal('login'); setAuthError(''); setAuthTurnstileToken(''); }}
-                            >Giriş Yap</button>
-                            <button
-                                className={`auth-modal-tab ${authModal === 'register' ? 'active' : ''}`}
-                                onClick={() => { setAuthModal('register'); setAuthError(''); setAuthTurnstileToken(''); }}
-                            >Kayıt Ol</button>
-                        </div>
-
-                        <button className="auth-modal-close" onClick={closeAuthModal} aria-label="Kapat">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                        </button>
-
-                        {authError && (
-                            <div
-                                className="alert alert-error"
-                                role="alert"
-                                aria-live="polite"
-                                style={{ marginBottom: 16, fontSize: '0.82rem' }}
-                            >{authError}</div>
-                        )}
-
-                        {authModal === 'login' ? (
-                            <form onSubmit={handleAuthLogin}>
-                                <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: 4 }}>Tekrar Hoş Geldiniz</h2>
-                                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{settings?.auth_subtitle_login || 'Okumaya devam etmek için giriş yapın'}</p>
-                                </div>
-                                <div className="form-group">
-                                    <label>E-posta</label>
-                                    <input type="email" className="form-input" placeholder="eposta@adresiniz.com"
-                                        value={authEmail} onChange={e => setAuthEmail(e.target.value)} required autoComplete="off" />
-                                </div>
-                                <div className="form-group">
-                                    <label>Şifre</label>
-                                    <input type="password" className="form-input" placeholder="••••••••"
-                                        value={authPassword} onChange={e => setAuthPassword(e.target.value)} required autoComplete="off" />
-                                </div>
-                                {settings?.turnstile_site_key && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1' && (
-                                    <TurnstileWidget
-                                        siteKey={settings.turnstile_site_key}
-                                        onVerify={(token) => setAuthTurnstileToken(token || '')}
-                                        onError={() => setAuthError('Doğrulama hatası. Lütfen sayfayı yenileyin.')}
-                                    />
-                                )}
-                                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={isFormSubmitting || (settings?.turnstile_site_key && !authTurnstileToken && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1')}>
-                                    {isFormSubmitting ? 'Giriş yapılıyor...' : 'Giriş Yap'}
-                                </button>
-                                <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 16 }}>
-                                    Hesabınız yok mu?{' '}
-                                    <button type="button" style={{ background: 'none', border: 'none', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, padding: 0 }}
-                                        onClick={() => { setAuthModal('register'); setAuthError(''); setAuthTurnstileToken(''); }}>
-                                        Kayıt Ol
-                                    </button>
-                                </p>
-                            </form>
-                        ) : (
-                            <form onSubmit={handleAuthRegister}>
-                                <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: 4 }}>Hesap Oluştur</h2>
-                                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{settings?.auth_subtitle_register || 'Dilediğiniz dilde manga okuyun'}</p>
-                                </div>
-                                <div className="form-group">
-                                    <label>Kullanıcı Adı</label>
-                                    <input type="text" className="form-input" placeholder="kullanici_adiniz"
-                                        value={authUsername} onChange={e => setAuthUsername(e.target.value)} required minLength={3} autoComplete="off" />
-                                </div>
-                                <div className="form-group">
-                                    <label>E-posta</label>
-                                    <input type="email" className="form-input" placeholder="eposta@adresiniz.com"
-                                        value={authEmail} onChange={e => setAuthEmail(e.target.value)} required autoComplete="off" />
-                                </div>
-                                <div className="form-group">
-                                    <label>Şifre</label>
-                                    <input type="password" className="form-input" placeholder="En az 6 karakter"
-                                        value={authPassword} onChange={e => setAuthPassword(e.target.value)} required autoComplete="new-password" />
-                                </div>
-                                <div className="form-group">
-                                    <label>Şifreyi Onayla</label>
-                                    <input type="password" className="form-input" placeholder="••••••••"
-                                        value={authConfirmPassword} onChange={e => setAuthConfirmPassword(e.target.value)} required autoComplete="new-password" />
-                                </div>
-                                {settings?.turnstile_site_key && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1' && (
-                                    <TurnstileWidget
-                                        siteKey={settings.turnstile_site_key}
-                                        onVerify={(token) => setAuthTurnstileToken(token || '')}
-                                        onError={() => setAuthError('Doğrulama hatası. Lütfen sayfayı yenileyin.')}
-                                    />
-                                )}
-                                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={isFormSubmitting || (settings?.turnstile_site_key && !authTurnstileToken && process.env.NEXT_PUBLIC_DISABLE_TURNSTILE !== '1')}>
-                                    {isFormSubmitting ? 'Hesap oluşturuluyor...' : 'Hesap Oluştur'}
-                                </button>
-                                <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 16 }}>
-                                    Zaten hesabınız var mı?{' '}
-                                    <button type="button" style={{ background: 'none', border: 'none', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, padding: 0 }}
-                                        onClick={() => { setAuthModal('login'); setAuthError(''); setAuthTurnstileToken(''); }}>
-                                        Giriş Yap
-                                    </button>
-                                </p>
-                            </form>
-                        )}
-                    </div>
-                </div>,
-                document.body
             )}
         </>
     );

@@ -292,7 +292,7 @@
   width: 100%;
   background: #000; /* Manga modu genelde simsiyah zemin kullanır */
   position: relative;
-  overflow-x: hidden; /* Yatay scroll engelle; dikey içerik (yorumlar) görünsün */
+  overflow: hidden; /* Prevent horizontal scroll natively, handled via JS/CSS transform */
 }
 .manga-viewport {
   position: relative;

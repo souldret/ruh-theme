@@ -22,14 +22,8 @@ export async function GET(request, { params }) {
         }
 
         // Zamanlı bölüm henüz yayınlanmadıysa okuyuculara gösterme
-        // Tarihe 'Z' eklenerek UTC olarak yorumlanması sağlanıyor
-        if (chapter.publish_at) {
-            const publishStr = String(chapter.publish_at).trim();
-            // ISO veya SQLite space-separated formatta UTC string'e çevir
-            const publishDate = new Date(publishStr.includes('T') ? publishStr : publishStr.replace(' ', 'T') + 'Z');
-            if (!isNaN(publishDate.getTime()) && publishDate > new Date()) {
-                return NextResponse.json({ error: 'Bu bölüm henüz yayınlanmadı', scheduled: true }, { status: 403 });
-            }
+        if (chapter.publish_at && new Date(chapter.publish_at) > new Date()) {
+            return NextResponse.json({ error: 'Bu bölüm henüz yayınlanmadı', scheduled: true }, { status: 403 });
         }
 
         // Record chapter view

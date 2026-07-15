@@ -1,21 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getVerifiedUser } from '@/lib/auth';
-import { createRateLimiter } from '@/lib/ratelimit';
-
-const notificationsRateLimit = createRateLimiter(30, 60 * 1000); // 30 istek/dk
 
 export async function GET(request) {
     try {
-        // Rate limit kontrolü
-        const rl = notificationsRateLimit(request);
-        if (!rl.success) {
-            return NextResponse.json(
-                { error: `Çok fazla istek. ${rl.retryAfter} saniye sonra tekrar deneyin.` },
-                { status: 429 }
-            );
-        }
-
         const db = getDb();
         const result = getVerifiedUser(request, db);
         if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });

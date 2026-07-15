@@ -25,6 +25,8 @@ export async function POST(request) {
             const lastUpdate = new Date(user.last_avatar_update + 'Z').getTime();
             const timeSinceLastUpdate = Date.now() - lastUpdate;
             if (timeSinceLastUpdate < msInDay) {
+                // Count changes within the last 24 hours
+                // For simplicity: use avatar_changes_today field if available, otherwise allow if >24h since last
                 const changesUsed = user.avatar_changes_today || 0;
                 if (changesUsed >= 2) {
                     const hoursLeft = Math.ceil((msInDay - timeSinceLastUpdate) / (1000 * 60 * 60));
@@ -35,6 +37,11 @@ export async function POST(request) {
 
         const formData = await request.formData();
         const file = formData.get('avatar');
+        const avatarCropData = {
+            cropX: parseFloat(formData.get('cropX')) || 0,
+            cropY: parseFloat(formData.get('cropY')) || 0,
+            cropScale: Math.max(0.01, parseFloat(formData.get('cropScale')) || 1),
+        };
 
         if (!file || typeof file === 'string') {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
@@ -62,30 +69,9 @@ export async function POST(request) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Canvas tabanlı kırpma yapıldığında client-side'da zaten kırpılmış görsel gelir
-        // Ancak crop parametrelerini de alarak tutarlılık kontrolü yapabiliriz
-        const cropX = parseFloat(formData.get('cropX')) || 0;
-        const cropY = parseFloat(formData.get('cropY')) || 0;
-        const cropScale = parseFloat(formData.get('cropScale')) || 1;
-        const cropApplied = formData.get('cropApplied') === 'true';
-        const viewportWidth = parseInt(formData.get('viewportWidth')) || 200;
-        const viewportHeight = parseInt(formData.get('viewportHeight')) || 200;
-        const outputWidth = parseInt(formData.get('outputWidth')) || 200;
-        const outputHeight = parseInt(formData.get('outputHeight')) || 200;
-
-        // Optimize & save via Sharp; fallback to original on error
+        // Optimize & save via Sharp (200x200 WebP); fallback to original on error
         try {
-            const cropOptions = {
-                cropX,
-                cropY,
-                cropScale,
-                cropApplied,
-                viewportWidth,
-                viewportHeight,
-                outputWidth,
-                outputHeight
-            };
-            await optimizeAvatar(buffer, path.join(uploadDir, filename), cropOptions);
+            await optimizeAvatar(buffer, path.join(uploadDir, filename), avatarCropData);
         } catch (sharpErr) {
             console.error('Sharp avatar optimization failed, saving original:', sharpErr.message);
             await writeFile(path.join(uploadDir, filename), buffer);
@@ -95,8 +81,8 @@ export async function POST(request) {
         const avatarUrl = `/uploads/avatars/${filename}`;
 
         // Reset counter if more than 24 hours since last update
-        const lastUpdateMs = user.last_avatar_update ? new Date(user.last_avatar_update + 'Z').getTime() : 0;
-        const shouldReset = (Date.now() - lastUpdateMs) > msInDay;
+        const lastUpdate = user.last_avatar_update ? new Date(user.last_avatar_update + 'Z').getTime() : 0;
+        const shouldReset = (Date.now() - lastUpdate) > msInDay;
 
         if (shouldReset) {
             db.prepare('UPDATE users SET avatar_url = ?, last_avatar_update = CURRENT_TIMESTAMP, avatar_changes_today = 1 WHERE id = ?').run(avatarUrl, user.id);

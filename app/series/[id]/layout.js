@@ -33,9 +33,7 @@ export async function generateMetadata({ params }) {
         const slug = series.slug || series.id;
         const canonicalUrl = `${BASE_URL}/series/${slug}`;
         const coverUrl = series.cover_url
-            ? (series.cover_url.startsWith('http')
-                ? series.cover_url
-                : `${BASE_URL}${series.cover_url.startsWith('/') ? '' : '/'}${series.cover_url}`)
+            ? (series.cover_url.startsWith('http') ? series.cover_url : `${BASE_URL}${series.cover_url}`)
             : `${BASE_URL}/icon-512.png`;
 
         const genres = series.genres
@@ -79,11 +77,6 @@ export async function generateMetadata({ params }) {
             pageTitle = settings.seo_title_series.replace(/\{series_name\}/g, series.title).replace(/\{site_name\}/g, siteName);
         }
 
-        // Tam URL oluştur (og:image ve twitter:image için mutlak URL gerekli)
-        const absoluteCoverUrl = coverUrl.startsWith('http')
-            ? coverUrl
-            : `${BASE_URL}${coverUrl.startsWith('/') ? '' : '/'}${coverUrl}`;
-
         return {
             title: pageTitle,
             description,
@@ -95,22 +88,20 @@ export async function generateMetadata({ params }) {
                 type: 'book',
                 url: canonicalUrl,
                 siteName: siteName,
-                title: series.title,
+                title: pageTitle,
                 description,
-                images: [
-                    {
-                        url: absoluteCoverUrl,
-                        width: 1200,
-                        height: 630,
-                        alt: series.title,
-                    },
-                ],
+                images: [{
+                    url: coverUrl,
+                    width: 460,
+                    height: 650,
+                    alt: `${series.title} kapak`,
+                }],
             },
             twitter: {
                 card: 'summary_large_image',
-                title: series.title,
+                title: pageTitle,
                 description,
-                images: [absoluteCoverUrl],
+                images: [coverUrl],
             },
         };
     } catch {
@@ -133,9 +124,7 @@ async function SeriesJsonLd({ id }) {
         const slug = series.slug || series.id;
         const canonicalUrl = `${BASE_URL}/series/${slug}`;
         const coverUrl = series.cover_url
-            ? (series.cover_url.startsWith('http')
-                ? series.cover_url
-                : `${BASE_URL}${series.cover_url.startsWith('/') ? '' : '/'}${series.cover_url}`)
+            ? (series.cover_url.startsWith('http') ? series.cover_url : `${BASE_URL}${series.cover_url}`)
             : `${BASE_URL}/icon-512.png`;
 
         const genres = series.genres

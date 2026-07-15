@@ -62,28 +62,14 @@ export async function POST(request) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Canvas tabanlı kırpma parametrelerini al
-        const cropX = parseFloat(formData.get('cropX')) || 0;
-        const cropY = parseFloat(formData.get('cropY')) || 0;
-        const cropScale = parseFloat(formData.get('cropScale')) || 1;
-        const cropApplied = formData.get('cropApplied') === 'true';
-        const viewportWidth = parseInt(formData.get('viewportWidth')) || 800;
-        const viewportHeight = parseInt(formData.get('viewportHeight')) || 180;
-        const outputWidth = parseInt(formData.get('outputWidth')) || 1200;
-        const outputHeight = parseInt(formData.get('outputHeight')) || 400;
+// Read crop parameters from FormData
+        const cropX     = formData.get('cropX');
+        const cropY     = formData.get('cropY');
+        const cropScale = formData.get('cropScale');
+        const cropOptions = { cropX, cropY, cropScale };
 
         // Optimize & save via Sharp (1200x400 WebP); fallback to original on error
         try {
-            const cropOptions = {
-                cropX,
-                cropY,
-                cropScale,
-                cropApplied,
-                viewportWidth,
-                viewportHeight,
-                outputWidth,
-                outputHeight
-            };
             await optimizeProfileCover(buffer, path.join(uploadDir, filename), cropOptions);
         } catch (sharpErr) {
             console.error('Sharp cover optimization failed, saving original:', sharpErr.message);
@@ -91,11 +77,11 @@ export async function POST(request) {
         }
 
         // Update database - increment change counter
-        const coverUrl = `/uploads/covers/${filename}`;
+        const coverUrl = `/uploads/covers/${filename}?v=${Date.now()}`;
 
         // Reset counter if more than 24 hours since last update
-        const lastUpdateMs = user.last_cover_update ? new Date(user.last_cover_update + 'Z').getTime() : 0;
-        const shouldReset = (Date.now() - lastUpdateMs) > msInDay;
+        const lastUpdate = user.last_cover_update ? new Date(user.last_cover_update + 'Z').getTime() : 0;
+        const shouldReset = (Date.now() - lastUpdate) > msInDay;
 
         if (shouldReset) {
             db.prepare('UPDATE users SET cover_url = ?, last_cover_update = CURRENT_TIMESTAMP, cover_changes_today = 1 WHERE id = ?').run(coverUrl, user.id);

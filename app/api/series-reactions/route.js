@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserFromRequest } from '@/lib/auth';
-import { createRateLimiter } from '@/lib/ratelimit';
-
-const seriesReactionRateLimit = createRateLimiter(30, 60 * 1000); // 30 istek/dk
 
 export async function GET(request) {
     try {
@@ -36,33 +33,17 @@ export async function GET(request) {
 
         return NextResponse.json({ success: true, counts, userReactions: userReacted || [] });
     } catch (error) {
-        console.error('GET /api/series-reactions error:', error);
-        const msg = process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message;
-        return NextResponse.json({ error: msg }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
 export async function POST(request) {
     try {
-        // Rate limit kontrolü
-        const rl = seriesReactionRateLimit(request);
-        if (!rl.success) {
-            return NextResponse.json(
-                { error: `Çok fazla istek. ${rl.retryAfter} saniye sonra tekrar deneyin.` },
-                { status: 429 }
-            );
-        }
-
         const user = getUserFromRequest(request);
         if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 
         const { seriesId, chapterId, emoji } = await request.json();
         if (!seriesId || !emoji) return NextResponse.json({ error: 'seriesId and emoji are required' }, { status: 400 });
-
-        // Emoji uzunluk kontrolü (Aşama 2)
-        if (typeof emoji !== 'string' || emoji.length > 10) {
-            return NextResponse.json({ error: 'Invalid emoji' }, { status: 400 });
-        }
 
         const db = getDb();
         const chapId = chapterId || null;
@@ -89,8 +70,6 @@ export async function POST(request) {
         }
 
     } catch (error) {
-        console.error('POST /api/series-reactions error:', error);
-        const msg = process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message;
-        return NextResponse.json({ error: msg }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

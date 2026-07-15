@@ -1,4 +1,4 @@
-import './globals.css';
+﻿import './globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 import { SettingsProvider } from '@/components/SettingsProvider';
 import Navbar from '@/components/Navbar';
@@ -7,23 +7,11 @@ import AdBanner from '@/components/AdBanner';
 import PopupAlert from '@/components/PopupAlert';
 import TrafficTracker from '@/components/TrafficTracker';
 import MaintenanceChecker from '@/components/MaintenanceChecker';
-import PageBackground from '@/components/PageBackground';
 import Link from 'next/link';
 import Script from 'next/script';
 import { cookies, headers } from 'next/headers';
 import { getDb } from '@/lib/db';
 import jwt from 'jsonwebtoken';
-import { getSettingsCache, setSettingsCache, SETTINGS_CACHE_TTL } from '@/lib/settings-cache';
-import { Inter } from 'next/font/google';
-
-// Inter fontunu optimize edilmiş şekilde yükle - FOIT/CLS önlenir
-const interFont = Inter({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['300', '400', '500', '600', '700', '800', '900'],
-  display: 'swap',
-  variable: '--font-inter',
-  preload: true,
-});
 
 // Paths that bypass maintenance mode (so admin can log in)
 const MAINTENANCE_BYPASS = ['/login', '/api/'];
@@ -34,19 +22,11 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yomitranslate.com'
 // Browser cache'ini deployment'ta kırar ama her request'te yeni URL üretmez.
 const SERVER_START_VER = Date.now().toString(36);
 
-// Favicon cache busting için veritabanındaki ayar değerinin hash'ini üret
-// Bu, ayar her değiştiğinde otomatik olarak değişir
-// settings objesi verilirse ayrı DB sorgusu yapmaz (daha verimli)
-function getFaviconTimestamp(settings) {
-  const faviconUrl = settings?.favicon_url || '';
-  // Değerin uzunluğu + ilk/son karakterlerin hash'i
-  // Bu, aynı uzunlukta farklı değerler için farklı sonuç verir
-  const hash = (faviconUrl.length + (faviconUrl[0]?.charCodeAt(0) || 0) + (faviconUrl[faviconUrl.length-1]?.charCodeAt(0) || 0)).toString(36);
-  return `${faviconUrl.length.toString(36)}_${hash}`;
-}
-
-// ── In-memory settings cache: lib/settings-cache.js üzerinden yönetiliyor ──────
-// Admin panelinden ayar kaydedilince invalidateSettingsCache() çağrılarak anında temizlenir.
+// ── In-memory settings cache (60 saniyelik TTL) ──────────────────────────────
+// Her SSR isteğinde DB'ye gitmek yerine cache'ten oku.
+let _settingsCache = null;
+let _settingsCacheAt = 0;
+const SETTINGS_CACHE_TTL = 60_000; // 60 saniye
 
 function buildWebsiteJsonLd(siteName, contactEmail) {
   const name = siteName || 'YomiTranslate';
@@ -76,9 +56,9 @@ function buildWebsiteJsonLd(siteName, contactEmail) {
         url: BASE_URL,
         logo: {
           '@type': 'ImageObject',
-          url: `${BASE_URL}/api/favicon`,
-          width: 32,
-          height: 32,
+          url: `${BASE_URL}/icon-512.png`,
+          width: 512,
+          height: 512,
         },
         contactPoint: {
           '@type': 'ContactPoint',
@@ -103,21 +83,10 @@ export async function generateMetadata() {
   const ogImageWidth = settings.og_image_url?.trim() ? 1200 : 512;
   const ogImageHeight = settings.og_image_url?.trim() ? 630 : 512;
 
-  // Favicon: admin panelinden ayarlanmışsa onu kullan, yoksa /api/favicon (veritabanından dinamik)
-  // NOT: /api/favicon her zaman veritabanındaki favicon_url değerini döndürür
+  // Favicon: admin panelinden ayarlanmışsa onu kullan (önbellek önlemek için timestamp ekle)
   const faviconUrl = settings.favicon_url?.trim()
     ? (settings.favicon_url.startsWith('http') ? settings.favicon_url : `${BASE_URL}${settings.favicon_url}`)
     : null;
-
-  // Cache busting için veritabanındaki favicon_url değerinden hash üret
-  const faviconBuster = getFaviconTimestamp(settings);
-
-  // Favicon URL'si varsa cache busting ekle
-  const getFaviconWithBuster = (url) => {
-    if (!url) return null;
-    const sep = url.includes('?') ? '&' : '?';
-    return `${url}${sep}fv=${faviconBuster}`;
-  };
 
   // Logo (apple-touch-icon vb.): logo_url yoksa icon-192 kullan
   const logoUrl = settings.logo_url?.trim()
@@ -144,25 +113,21 @@ export async function generateMetadata() {
       else if (urlLower.includes('.ico')) faviconType = 'image/x-icon';
       else if (urlLower.includes('.gif')) faviconType = 'image/gif';
 
-      const faviconWithBust = getFaviconWithBuster(faviconUrl);
-
-      // Özel favicon ayarlanmışsa EN BAŞA koy — tarayıcılar ilk eşleşeni önceliklendirir
       return {
         icon: [
-          { url: faviconWithBust, type: faviconType, sizes: 'any' },
+          { url: `/icon-192.png?v=${SERVER_START_VER}`, sizes: '192x192', type: 'image/png' },
+          { url: `/icon-512.png?v=${SERVER_START_VER}`, sizes: '512x512', type: 'image/png' },
+          { url: `${faviconUrl}?v=${SERVER_START_VER}`, type: faviconType },
         ],
         apple: [{ url: `${logoUrl}?v=${SERVER_START_VER}` }],
-        shortcut: [{ url: faviconWithBust, type: faviconType }],
-        other: [
-          { rel: 'icon', url: faviconWithBust, type: faviconType },
-        ],
+        shortcut: { url: `${faviconUrl}?v=${SERVER_START_VER}`, type: faviconType },
       };
     })() : {
-      // Varsayılan: dinamik favicon API'sini kullan
       icon: [
-        { url: `/api/favicon?v=${faviconBuster}`, type: 'image/svg+xml' },
+        { url: `/icon-192.png?v=${SERVER_START_VER}`, sizes: '192x192', type: 'image/png' },
+        { url: `/icon-512.png?v=${SERVER_START_VER}`, sizes: '512x512', type: 'image/png' },
       ],
-      apple: [{ url: `/api/favicon?v=${faviconBuster}`, type: 'image/svg+xml' }],
+      apple: [{ url: `/icon-192.png?v=${SERVER_START_VER}` }],
     },
     openGraph: {
       type: 'website',
@@ -203,11 +168,6 @@ export async function generateMetadata() {
       statusBarStyle: 'black-translucent',
       title: siteName,
     },
-    ...(settings.google_site_verification?.trim() ? {
-      verification: {
-        google: settings.google_site_verification.trim(),
-      },
-    } : {}),
   };
 }
 
@@ -458,37 +418,20 @@ function MaintenancePage({ message, siteName, contactEmail, discordUrl, logoUrl,
   );
 }
 
-function isStaffFromCookie(cookieStore) {
+function isAdminFromCookie(cookieStore) {
   try {
     const token = cookieStore.get('yomi_token')?.value;
     if (!token) return false;
     const secret = process.env.JWT_SECRET || 'fallback-secret';
     const payload = jwt.verify(token, secret);
-    if (!payload?.role) return false;
-    // Yerleşik yetkili roller
-    const builtinStaff = ['admin', 'manager', 'moderator', 'team_member'];
-    if (builtinStaff.includes(payload.role)) return true;
-    // Özel roller: DB'den kontrol et
-    try {
-      const db = getDb();
-      const row = db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_roles'").get();
-      if (row?.setting_value) {
-        const customRoles = JSON.parse(row.setting_value);
-        return customRoles.some(r => r.name === payload.role);
-      }
-    } catch {}
-    return false;
+    return payload?.role === 'admin';
   } catch {
     return false;
   }
 }
 
-function isMaintenanceModeOn(settings) {
+function isMaintenanceModeOn() {
   try {
-    // settings nesnesi varsa önce onu kullan (DB'den cache'lenmiş veri — ekstra sorgu yok)
-    if (settings && typeof settings === 'object' && 'maintenance_mode' in settings) {
-      return settings.maintenance_mode === '1';
-    }
     const db = getDb();
     const row = db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'maintenance_mode'").get();
     return row?.setting_value === '1';
@@ -497,12 +440,8 @@ function isMaintenanceModeOn(settings) {
   }
 }
 
-function getMaintenanceMessage(settings) {
+function getMaintenanceMessage() {
   try {
-    // settings nesnesi varsa önce onu kullan (DB'den cache'lenmiş veri — ekstra sorgu yok)
-    if (settings && typeof settings === 'object' && 'maintenance_message' in settings) {
-      return settings.maintenance_message || '';
-    }
     const db = getDb();
     const row = db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'maintenance_message'").get();
     return row?.setting_value || '';
@@ -525,9 +464,8 @@ const DEFAULT_FOOTER_MENU = [
 ];
 
 function getSiteSettings() {
-  // Paylaşılan cache geçerliyse DB'ye gitme
+  // Cache geçerliyse DB'ye gitme
   const now = Date.now();
-  const { cache: _settingsCache, cacheAt: _settingsCacheAt } = getSettingsCache();
   if (_settingsCache && now - _settingsCacheAt < SETTINGS_CACHE_TTL) {
     return _settingsCache;
   }
@@ -592,12 +530,9 @@ function getSiteSettings() {
       seo_title_chapter: s.seo_title_chapter || '',
       google_analytics_id: s.google_analytics_id || '',
       google_tag_manager_id: s.google_tag_manager_id || '',
-      google_site_verification: s.google_site_verification || '',
       og_image_url: s.og_image_url || '',
       navbar_menu: navbarMenu,
       footer_menu: footerMenu,
-      maintenance_mode: s.maintenance_mode || '0',
-      maintenance_message: s.maintenance_message || '',
       maintenance_mode_design: s.maintenance_mode_design || 'default',
       latest_updates_title_color: s.latest_updates_title_color || '',
       latest_updates_card_bg: s.latest_updates_card_bg || '',
@@ -608,7 +543,8 @@ function getSiteSettings() {
       points_name: s.points_name || '',
       points_short: s.points_short || '',
     };
-    setSettingsCache(result);
+    _settingsCache = result;
+    _settingsCacheAt = Date.now();
     return result;
   } catch {
     return {
@@ -888,12 +824,9 @@ export default async function RootLayout({ children }) {
   const cookieStore = await cookies();
   const headerStore = await headers();
   const pathname = headerStore.get('x-pathname') || '/';
-  // cacheVersion en üste taşındı — bakım modu early return'lerde erken kullanılıyor
-  const cacheVersion = SERVER_START_VER;
-  const isAdmin = isStaffFromCookie(cookieStore);
+  const maintenance = isMaintenanceModeOn();
+  const isAdmin = isAdminFromCookie(cookieStore);
   const siteSettings = getSiteSettings();
-  // getSiteSettings() zaten cache'lenmiş veriyi döndürür — ekstra DB sorgusu yok
-  const maintenance = isMaintenanceModeOn(siteSettings);
 
   // API routes bypass tamamen — layout bile çalışmaz
   const isApiRoute = pathname.startsWith('/api/');
@@ -937,7 +870,7 @@ export default async function RootLayout({ children }) {
     }
     // /login ve /maintenance dışındaki sayfalarda maintenance sayfasını göster
     if (!pathname.startsWith('/maintenance')) {
-      const msg = getMaintenanceMessage(siteSettings);
+      const msg = getMaintenanceMessage();
       const logoUrl = siteSettings.logo_url ? `${siteSettings.logo_url}${siteSettings.logo_url.includes('?') ? '&' : '?'}v=maintenance` : null;
       return <MaintenancePage message={msg} siteName={siteSettings.site_name} contactEmail={siteSettings.contact_email} discordUrl={siteSettings.discord_url || null} logoUrl={logoUrl} design={siteSettings.maintenance_mode_design || 'default'} />;
     }
@@ -978,16 +911,15 @@ export default async function RootLayout({ children }) {
     ],
   });
 
+  // Favicon ve logo için cache önleme versiyonu (deployment'ta değişir, her requestte değil)
+  const cacheVersion = SERVER_START_VER;
+
   return (
-    <html lang="tr" suppressHydrationWarning data-scroll-behavior="smooth" className={interFont.variable}>
+    <html lang="tr" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
-        {/* Font artik next/font ile optimize edildi - harici istek yok, otomatik preload var */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
-        {/* Favicon artik sadece generateMetadata() icinden yonetiliyor
-            Varsayilan favicon: /api/favicon (veritabanindan dinamik yuklenir)
-            Özel favicon: admin panelinden ayarlanan URL
-            Tum durumlarda cache busting aktif - veritabani degisikliklerinde tarayici aninda guncellenir */}
+        {/* Favicon sadece generateMetadata() icinden yonetiliyor - cift tanim onlemek icin buradan kaldirildi */}
         {dynamicCss && (
           <style dangerouslySetInnerHTML={{ __html: dynamicCss }} />
         )}
@@ -1045,11 +977,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         {siteSettings.custom_head_scripts && (
           <CustomHeadScripts html={siteSettings.custom_head_scripts} />
         )}
-
         <SettingsProvider>
         <AuthProvider>
           <MaintenanceChecker />
-          <PageBackground />
           <Navbar siteSettings={siteSettings} />
           <AdBanner placement="header" style={{ width: '100%' }} />
           {maintenance && isAdmin && (

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { requireAuth, hasAdminPanelAccess } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 
 function slugify(text) {
     return text.toLowerCase().trim()
@@ -13,10 +13,10 @@ function slugify(text) {
 export async function GET(request) {
     try {
         const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!user || !['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
+        const db = getDb();
         const pages = db.prepare('SELECT * FROM custom_pages ORDER BY created_at DESC').all();
         return NextResponse.json({ success: true, pages });
     } catch (e) {
@@ -27,12 +27,12 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) {
+        if (!user || !['admin', 'manager'].includes(user.role)) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
         const body = await request.json();
         const { action, id, title, content, slug, is_active, show_in_footer, show_in_navbar } = body;
+        const db = getDb();
 
         if (action === 'delete') {
             db.prepare('DELETE FROM custom_pages WHERE id = ?').run(id);

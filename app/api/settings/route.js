@@ -1,22 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { createRateLimiter } from '@/lib/ratelimit';
 
 export const dynamic = 'force-dynamic';
 
-const settingsRateLimit = createRateLimiter(30, 60 * 1000); // 30 istek/dk
-
 export async function GET(request) {
     try {
-        // Rate limit kontrolü
-        const rl = settingsRateLimit(request);
-        if (!rl.success) {
-            return NextResponse.json(
-                { success: false, error: `Çok fazla istek. ${rl.retryAfter} saniye sonra tekrar deneyin.` },
-                { status: 429 }
-            );
-        }
-
         const db = getDb();
         const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
         const settings = {};
