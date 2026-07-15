@@ -23,8 +23,5 @@
   },
   "overrides": {
     "postcss": "8.5.10"
-  },
-  "devDependencies": {
-    "critters": "^0.0.23"
   }
 }

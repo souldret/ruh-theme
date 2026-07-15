@@ -1,19 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['better-sqlite3', 'jsonwebtoken', 'sharp'],
-
-  // Tum favicon yonetimi artik veritabani uzerinden dinamik olarak yapiliyor
-  // Favicon API: /api/favicon — veritabanindaki favicon_url degerini dondurur
-
-  // Büyük manga sayfası yüklemeleri için body size limitini artır (varsayılan 4MB)
-  experimental: {
-    serverActions: {
-      bodySizeLimit: '50mb',
-    },
-    optimizePackageImports: ['recharts', 'lucide-react', 'date-fns'],
-    // Critical CSS generation - render-blocking azaltir
-    optimizeCss: true,
-  },
   // Prevent Turbopack from statically tracing the uploads directory
   outputFileTracingExcludes: {
     '*': [
@@ -32,13 +19,9 @@ const nextConfig = {
     formats: ['image/avif', 'image/webp'],
     // Caching süresi (saniye) - 30 gün
     minimumCacheTTL: 2592000,
-    // Cihaz boyutları — manga okuyucu + kart görsellerine göre optimize edildi
-    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
-    imageSizes: [24, 32, 48, 64, 96, 128, 256, 384],
-    // Kestrel için optimize
-    dangerouslyAllowSVG: true,
-    contentDispositionType: 'attachment',
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    // Cihaz boyutları: gereksiz breakpoint'leri kaldır, sadece kullanılanlar
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256],
   },
   // Gzip/Brotli compression
   compress: true,
@@ -50,8 +33,6 @@ const nextConfig = {
       ? { exclude: ['error', 'warn'] }
       : false,
   },
-  // Bundle analyzer icin notlar
-  // Bundle'ı analiz etmek icin: ANALYZE=true npm run build
   async headers() {
     return [
       {

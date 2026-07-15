@@ -106,7 +106,7 @@ Eğer projen GitHub/GitLab'da ise:
 ```bash
 mkdir -p /var/www
 cd /var/www
-git clone https://github.com/souldret/ruh-theme.git
+git clone https://github.com/turanbagtur/ruh-theme.git
 cd ruh-theme
 ```
 
@@ -114,7 +114,7 @@ cd ruh-theme
 
 Kendi Windows bilgisayarından PowerShell ile sunucuya kopyala:
 ```powershell
-scp -r "C:\Users\KULLANICI_ADINIZ\ruh-theme" root@SUNUCU_IP:/var/www/ruh-theme
+scp -r "C:\Users\tbagt\OneDrive\Desktop\ruh-theme" root@SUNUCU_IP:/var/www/ruh-theme
 ```
 
 Sonra sunucuda:
@@ -388,148 +388,18 @@ Artık siteye `https://ruhtheme.com` adresinden **güvenli** erişilebilir.
 
 Uygulama ilk çalıştırıldığında veritabanı otomatik oluşturulur.
 
-İlk kurulumda `lib/seed.js` dosyasında tanımlı seed verileri ile bir admin hesabı oluşturulur.
+Varsayılan admin hesabı:
 
-> ⚠️ **GÜVENLİK UYARISI:** Seed admin hesabının e-posta ve şifresini **kurulumdan hemen sonra** değiştir.  
-> Varsayılan kimlik bilgilerini burada belirtmiyoruz — `lib/seed.js` dosyasına bak ve deploy öncesi güçlü bir şifre ile değiştir.  
+| Alan | Değer |
+|---|---|
+| **URL** | `https://ruhtheme.com/login` |
+| **Email** | `admin@yomitranslate.com` |
+| **Şifre** | `admin123` |
+
+> 🚨 **GİRİŞ YAPTIKTAN HEMEN SONRA** şifreyi ve e-posta adresini değiştir!  
 > Profil sayfasına giderek hesap bilgilerini güncelle.
 
-> 🚨 **Varsayılan şifreyle production'a çıkma!** Hesap ele geçirilirse tüm site verilerine erişim sağlanabilir.
-
 Admin paneline şuradan eriş: `https://ruhtheme.com/admin-panel`
-
----
-
-## 🔍 Google Search Console & Indexing API Kurulumu
-
-Bu bölüm, sitenin Google'da daha hızlı indekslenmesi için gerekli entegrasyonu anlatır. İki ayrı adım vardır: site doğrulama ve otomatik indeksleme.
-
-> 💡 **Başlamadan önce oku — Mülk Tipi Farkı:**
->
-> Search Console'da iki farklı mülk tipi vardır:
-> - **Alan Adı** → `siteni.com` şeklinde, protokolsüz eklenir. DNS kaydıyla doğrulanır.
-> - **URL Öneki** → `https://siteni.com` şeklinde, protokol ile eklenir. HTML etiketiyle doğrulanabilir.
->
-> **Google Indexing API yalnızca URL Öneki mülkleriyle çalışır.**  
-> Alan Adı mülküne servis hesabı "Sahip" olarak eklenemez; eklenmeye çalışılsa bile 403 hatası alınır.  
-> Bu nedenle mülkünü mutlaka **URL Öneki** olarak oluşturman gerekir.
-
----
-
-### Adım 1 — Google Search Console'da Site Doğrulama
-
-1. [Google Search Console](https://search.google.com/search-console)'a git
-2. **Mülk Ekle** butonuna tıkla
-3. Açılan pencerede **sağdaki "URL öneki"** kutusunu seç (soldaki "Alan adı" değil!)
-4. `https://sitenizinadi.com` yaz (başında `https://` olmalı) → **Devam**
-5. Doğrulama yöntemi olarak **HTML etiketi**'ni seç
-6. Şu şekilde bir kod göreceksin:
-   ```html
-   <meta name="google-site-verification" content="XXXXXXXXXXXXXXXXXXXX" />
-   ```
-7. Yalnızca `content="..."` içindeki değeri kopyala (tırnak işaretleri olmadan)
-8. **Admin Paneli → Özelleştir → Analitik** bölümüne git
-9. **"Google Search Console Doğrulama Kodu"** alanına yapıştır ve kaydet
-10. Search Console'a dön → **Doğrula** butonuna bas
-
-> ⚠️ Daha önce "Alan Adı" mülkü oluşturduysan silmene gerek yok — yeni URL Öneki mülkü ayrıca ekle, ikisi yan yana çalışır.
-
----
-
-### Adım 2 — Google Indexing API (Otomatik Bölüm İndeksleme)
-
-Yeni manga bölümü eklendiğinde Google'ın otomatik olarak haberdar edilmesi için bir **Service Account** anahtarı gerekir.
-
-#### 2.1 — Google Cloud Projesi Oluştur
-
-1. [Google Cloud Console](https://console.cloud.google.com/)'a git
-2. Üstte proje seçiciye tıkla → **Yeni Proje** oluştur (ad: `ruh-theme-indexing`)
-3. Proje oluşturulduktan sonra o projeyi seç
-
-#### 2.2 — Web Search Indexing API'yi Etkinleştir
-
-1. Sol menü → **API'ler ve Hizmetler → Kitaplık**
-2. Arama kutusuna **"Web Search Indexing API"** yaz
-3. Çıkan sonuca tıkla → **Etkinleştir** butonuna bas
-
-> ⚠️ Bu adımı atlarsan `HTTP 403 - API has not been used` hatası alırsın.
-
-#### 2.3 — Service Account Oluştur
-
-1. Sol menü → **API'ler ve Hizmetler → Kimlik Bilgileri**
-2. **+ Kimlik Bilgisi Oluştur → Service Account** seç
-3. Ad: `indexing-bot` yaz → **Oluştur ve Devam Et**
-4. Rol atama adımını **Atla** (Search Console'dan verilecek)
-5. **Bitti** butonuna bas
-
-#### 2.4 — JSON Anahtarı İndir
-
-1. Az önce oluşturduğun servis hesabına tıkla
-2. Üstte **Anahtarlar** sekmesine geç
-3. **Anahtar Ekle → Yeni Anahtar Oluştur → JSON** seç → **Oluştur**
-4. `proje-adı-xxxxxxx.json` adında bir dosya indirilir — **güvende tut, asla Git'e commit'leme!**
-
-#### 2.5 — Service Account'u Search Console'a Sahip Olarak Ekle (EN KRİTİK ADIM)
-
-> ⚠️ **Bu adım yanlış yapılırsa `HTTP 403 - Permission denied. Failed to verify the URL ownership` hatası alırsın.**
->
-> **Yaygın hata:** Mülkünü "Alan Adı" (`siteni.com`, protokolsüz) olarak oluşturduysan servis hesabını oraya Sahip olarak **ekleyemezsin** — Google bu tipi desteklemiyor. Bu nedenle Adım 1'de **URL Öneki** (`https://siteni.com`) mülkü oluşturulması şarttır.
-
-Adımlar:
-
-1. [Google Search Console](https://search.google.com/search-console)'a git
-2. Sol üstteki açılır menüden **URL Öneki mülkünü** seç — `https://siteni.com` formatında olanı
-   - Eğer sadece Alan Adı mülkün varsa → Adım 1'e dön, yeni bir URL Öneki mülkü oluştur
-3. Sol menü → **Ayarlar → Kullanıcılar ve İzinler**
-4. **Kullanıcı Ekle** butonuna tıkla
-5. E-posta alanına service account adresini gir:
-   - Format: `indexing-bot@proje-adi-xxxxx.iam.gserviceaccount.com`
-   - Bu adresi indirdiğin JSON dosyasındaki `"client_email"` alanından kopyalayabilirsin
-6. İzin: **Sahip** (Owner) seç → **Ekle**
-
-> ⚠️ **"Okuyucu" veya "Tam Kullanıcı" yetmez** — mutlaka **Sahip** seç.  
-> ⚠️ **Hangi mülke eklediğine dikkat et** — Alan Adı ve URL Öneki mülkleri ayrı listelenir; URL Öneki olanı seç.
-
-#### 2.6 — Anahtarı Admin Paneline Yükle
-
-1. **Admin Paneli → Özelleştir → Google Indexing API (Otomatik İndeksleme)** bölümüne git
-2. **"Service Account Anahtarı Yükle"** alanından indirdiğin `.json` dosyasını seç
-3. Yükleme başarılıysa servis hesabı e-postası yeşil kutuda görünür
-4. **Test Et** butonuna bas — `✓ URL başarıyla Google'a bildirildi` mesajını görmelisin
-
-#### 2.7 — Sunucuya Manuel Yükleme (Alternatif)
-
-Admin paneli üzerinden yükleyemezsen doğrudan sunucuya kopyalayabilirsin:
-
-```bash
-# Kendi bilgisayarından sunucuya kopyala
-scp proje-adı-xxxxxxx.json root@SUNUCU_IP:/var/www/ruh-theme/google-indexing-key.json
-
-# İzin ayarla (Node.js okuyabilsin)
-chmod 600 /var/www/ruh-theme/google-indexing-key.json
-chown root:root /var/www/ruh-theme/google-indexing-key.json
-```
-
-Dosya adı tam olarak `google-indexing-key.json` olmalıdır.
-
----
-
-#### Sık Karşılaşılan Hatalar ve Çözümleri
-
-| Hata Mesajı | Olası Neden | Çözüm |
-|---|---|---|
-| `HTTP 403 - API has not been used` | Web Search Indexing API etkinleştirilmemiş | Adım 2.2: Cloud Console'da API'yi etkinleştir |
-| `HTTP 403 - Permission denied. Failed to verify URL ownership` | (1) Service account hiç eklenmemiş, (2) **Alan Adı** mülküne eklenmiş (desteklenmiyor), (3) Sahip yerine Okuyucu/Tam Kullanıcı olarak eklenmiş | Adım 1'de **URL Öneki** (`https://...`) mülkü oluştur → Adım 2.5: servis hesabını bu mülke **Sahip** olarak ekle |
-| `HTTP 403 - API has not been used in project` | Yanlış Google Cloud projesinde anahtar oluşturulmuş | API'nin etkinleştirildiği projeyle **aynı projeden** anahtar oluştur |
-| `OAuth token alınamadı` | JSON dosyası bozuk, alan eksik veya yanlış proje | Yeni anahtar oluştur (Adım 2.4), admin panelinden tekrar yükle |
-| `google-indexing-key.json bulunamadı` | Dosya yüklenmemiş veya yanlış konumda | Admin panelinden tekrar yükle; sunucuda `/var/www/ruh-theme/google-indexing-key.json` yolunu kontrol et |
-| Search Console doğrulaması başarısız | Site erişilebilir değil veya meta etiketi yanlış/eksik | Sitenin canlıda çalıştığını doğrula; admin panelinden doğrulama kodunu kaydet, sayfayı yenile |
-
-> 💡 **Hızlı Kontrol Listesi:**
-> - [ ] Search Console'da **URL Öneki** (`https://...`) mülkü oluşturuldu
-> - [ ] Servis hesabı bu **URL Öneki mülküne** — Alan Adı mülküne değil — **Sahip** olarak eklendi
-> - [ ] Google Cloud'da **Web Search Indexing API** etkinleştirildi
-> - [ ] JSON anahtar dosyası admin paneline yüklendi ve Test Et başarılı çıktı
 
 ---
 
@@ -576,10 +446,7 @@ Kaydet ve çık.
 /var/www/ruh-theme/data/manga.db        ← Tüm veriler (kullanıcılar, seriler, vs.)
 /var/www/ruh-theme/public/uploads/      ← Manga görselleri
 /var/www/ruh-theme/.env.local           ← Ortam değişkenleri
-/var/www/ruh-theme/backups/             ← Admin panelinden oluşturulan JSON yedekler
 ```
-
-> **Not:** Cron job `/root/backups/` klasörüne SQLite dosyası kopyalarken, admin paneli yedekleme özelliği `/var/www/ruh-theme/backups/` klasörüne JSON formatında yedek oluşturur. Her iki konumu da yedekle.
 
 ---
 
