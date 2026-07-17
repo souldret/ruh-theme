@@ -1,4 +1,4 @@
-﻿import './globals.css';
+import './globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 import { SettingsProvider } from '@/components/SettingsProvider';
 import Navbar from '@/components/Navbar';
@@ -828,6 +828,9 @@ export default async function RootLayout({ children }) {
   const isAdmin = isAdminFromCookie(cookieStore);
   const siteSettings = getSiteSettings();
 
+  // Favicon ve logo için cache önleme versiyonu (deployment'ta değişir, her requestte değil)
+  const cacheVersion = SERVER_START_VER;
+
   // API routes bypass tamamen — layout bile çalışmaz
   const isApiRoute = pathname.startsWith('/api/');
   if (isApiRoute) {
@@ -910,9 +913,6 @@ export default async function RootLayout({ children }) {
       { '@type': 'ListItem', position: 1, name: 'Ana Sayfa', item: BASE_URL },
     ],
   });
-
-  // Favicon ve logo için cache önleme versiyonu (deployment'ta değişir, her requestte değil)
-  const cacheVersion = SERVER_START_VER;
 
   return (
     <html lang="tr" suppressHydrationWarning data-scroll-behavior="smooth">
