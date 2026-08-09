@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth, hasAdminPanelAccess } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
@@ -8,9 +8,7 @@ import path from 'path';
 // POST /api/admin/page-bg-image?page=home   (page = home|archive|requests|profile|ranking|global)
 export async function POST(request) {
     try {
-        const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) throw new Error('Forbidden');
+        requireAdmin(request);
     } catch {
         return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }
@@ -81,9 +79,7 @@ export async function POST(request) {
 // Sayfa arka plan görselini sil
 export async function DELETE(request) {
     try {
-        const user = requireAuth(request);
-        const db = getDb();
-        if (!hasAdminPanelAccess(user, db)) throw new Error('Forbidden');
+        requireAdmin(request);
     } catch {
         return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
     }
