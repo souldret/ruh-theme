@@ -1031,7 +1031,7 @@ export function ReaderContent({ chapterId: propChapterId } = {}) {
                         </div>
                     )}
                     {!showEndCard && (
-                        <div id="comments-section" className="page-container" style={{ marginTop: 40, maxWidth: 800, margin: '40px auto 0', padding: '0 20px', paddingBottom: 120 }}>
+                        <div id="comments-section" className="page-container" style={{ width: '100%', marginTop: 40, maxWidth: 800, margin: '40px auto 0', padding: '0 20px', paddingBottom: 120, boxSizing: 'border-box' }}>
                             <ReaderSupportCard appSettings={appSettings} />
                             <CommentSection chapterId={chapterId} seriesId={series.id} />
                         </div>

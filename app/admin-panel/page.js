@@ -1491,6 +1491,7 @@ og_image_url: sData.settings.og_image_url || '',
                      trending_design: sData.settings.trending_design || 'trend_style1',
                      hero_slider_design: sData.settings.hero_slider_design || 'hero_style1',
                      series_detail_design: sData.settings.series_detail_design || 'detail_style1',
+                     series_detail_bg_blur: sData.settings.series_detail_bg_blur || '',
                      comment_design: sData.settings.comment_design || 'comment_style1',
                      latest_updates_title_color: sData.settings.latest_updates_title_color || '',
                      latest_updates_card_bg: sData.settings.latest_updates_card_bg || '',
@@ -2018,6 +2019,70 @@ og_image_url: sData.settings.og_image_url || '',
             show(d.message); fetchStats(); openSeriesDetail(detailSeries.id);
         } catch (e) { show(e.message, 'error'); }
         finally { setSubmitting(false); }
+    }
+
+    // Series list bulk selection
+    const [selectedSeriesIds, setSelectedSeriesIds] = useState(new Set());
+    const [bulkSeriesDeleting, setBulkSeriesDeleting] = useState(false);
+    const [bulkSeriesCoverUploading, setBulkSeriesCoverUploading] = useState(false);
+    const bulkSeriesCoverRef = useRef(null);
+
+    function toggleSeriesSelect(id) {
+        setSelectedSeriesIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    function toggleSeriesSelectAll() {
+        if (selectedSeriesIds.size === allSeries.length && allSeries.length > 0) {
+            setSelectedSeriesIds(new Set());
+        } else {
+            setSelectedSeriesIds(new Set(allSeries.map(s => s.id)));
+        }
+    }
+
+    async function handleBulkDeleteSeries() {
+        const ids = Array.from(selectedSeriesIds);
+        if (ids.length === 0) return;
+        if (!window.confirm(`Seçili ${ids.length} seriyi ve tüm bölümlerini silmek istediğinize emin misiniz? BU İŞLEM GERİ ALINAMAZ!`)) return;
+        setBulkSeriesDeleting(true);
+        try {
+            const fd = new FormData();
+            fd.append('action', 'bulk-delete-series');
+            fd.append('seriesIds', JSON.stringify(ids));
+            const r = await fetch('/api/admin', { method: 'POST', body: fd, headers: authHeaders() });
+            const d = await r.json(); if (!r.ok) throw new Error(d.error);
+            show(d.message);
+            setSelectedSeriesIds(new Set());
+            fetchStats();
+        } catch (e) { show(e.message, 'error'); }
+        finally { setBulkSeriesDeleting(false); }
+    }
+
+    async function handleBulkSeriesCoverUpload(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const ids = Array.from(selectedSeriesIds);
+        if (ids.length === 0) return;
+        setBulkSeriesCoverUploading(true);
+        try {
+            const fd = new FormData();
+            fd.append('action', 'bulk-update-series-cover');
+            fd.append('seriesIds', JSON.stringify(ids));
+            fd.append('cover', file);
+            const r = await fetch('/api/admin', { method: 'POST', body: fd, headers: authHeaders() });
+            const d = await r.json(); if (!r.ok) throw new Error(d.error);
+            show(d.message);
+            setSelectedSeriesIds(new Set());
+            fetchStats();
+        } catch (e) { show(e.message, 'error'); }
+        finally {
+            setBulkSeriesCoverUploading(false);
+            if (bulkSeriesCoverRef.current) bulkSeriesCoverRef.current.value = '';
+        }
     }
 
     const [selectedChapters, setSelectedChapters] = useState([]);
@@ -2566,6 +2631,20 @@ og_image_url: sData.settings.og_image_url || '',
                                 <PlusIcon /> New Series
                             </button>
                         </div>
+                        {allSeries.length > 0 && (
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 8, flexWrap: 'wrap' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedSeriesIds.size === allSeries.length && allSeries.length > 0}
+                                        onChange={toggleSeriesSelectAll}
+                                        style={{ width: 16, height: 16, cursor: 'pointer' }}
+                                    />
+                                    Tümünü Seç
+                                </label>
+                                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{selectedSeriesIds.size} seri seçildi</span>
+                            </div>
+                        )}
                         {allSeries.length === 0 ? (
                             <div className="admin-card" style={{ textAlign: 'center', padding: '40px 20px' }}>
                                 <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>No series yet. Create your first manga series!</p>
@@ -2576,16 +2655,23 @@ og_image_url: sData.settings.og_image_url || '',
                         ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                                 {allSeries.map(s => (
-                                    <div key={s.id} className="admin-card" style={{ cursor: 'pointer', transition: 'transform 0.15s' }}
+                                    <div key={s.id} className="admin-card" style={{ cursor: 'pointer', transition: 'transform 0.15s', position: 'relative' }}
                                         onClick={() => openSeriesDetail(s.id)}
                                         onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                                         onMouseOut={e => e.currentTarget.style.transform = 'none'}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedSeriesIds.has(s.id)}
+                                            onClick={e => e.stopPropagation()}
+                                            onChange={() => toggleSeriesSelect(s.id)}
+                                            style={{ position: 'absolute', top: 10, right: 10, width: 18, height: 18, cursor: 'pointer', zIndex: 2 }}
+                                        />
                                         <div style={{ display: 'flex', gap: 12 }}>
                                             <div style={{ width: 60, height: 85, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: 'var(--bg-tertiary)' }}>
                                                 <img src={s.cover_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='85'%3E%3Crect width='60' height='85' fill='%231a1a2e'/%3E%3Ctext x='30' y='45' text-anchor='middle' fill='%23555' font-size='22'%3E📖%3C/text%3E%3C/svg%3E"} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                             </div>
                                             <div style={{ flex: 1, minWidth: 0 }}>
-                                                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</h3>
+                                                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 20 }}>{s.title}</h3>
                                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
                                                     <span className={`admin-badge ${s.published ? 'admin-role' : 'user-role'}`}>{s.published ? 'Published' : 'Draft'}</span>
                                                     <span className="admin-badge user-role">{s.status}</span>
@@ -2598,6 +2684,39 @@ og_image_url: sData.settings.og_image_url || '',
                                     </div>
                                 ))}
                             </div>
+                        )}
+
+                        {/* ── Floating bulk action bar for series ── */}
+                        {selectedSeriesIds.size > 0 && mounted && createPortal(
+                            <div style={{
+                                position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                                borderRadius: 12, padding: '12px 20px', display: 'flex', gap: 10, alignItems: 'center',
+                                boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 9999, flexWrap: 'wrap'
+                            }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{selectedSeriesIds.size} seri seçildi</span>
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: bulkSeriesCoverUploading ? 'not-allowed' : 'pointer', background: 'var(--accent)', color: '#fff', padding: '6px 14px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 700, opacity: bulkSeriesCoverUploading ? 0.65 : 1 }}>
+                                    {bulkSeriesCoverUploading ? 'Yükleniyor...' : <><ImageIcon /> Toplu Kapak Ata</>}
+                                    <input
+                                        ref={bulkSeriesCoverRef}
+                                        type="file"
+                                        accept="image/*"
+                                        style={{ display: 'none' }}
+                                        disabled={bulkSeriesCoverUploading}
+                                        onChange={handleBulkSeriesCoverUpload}
+                                    />
+                                </label>
+                                <button
+                                    className="btn btn-danger btn-sm"
+                                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                    onClick={handleBulkDeleteSeries}
+                                    disabled={bulkSeriesDeleting}
+                                >
+                                    <TrashIcon /> {bulkSeriesDeleting ? 'Siliniyor...' : 'Seçilenleri Sil'}
+                                </button>
+                                <button className="btn btn-sm btn-ghost" onClick={() => setSelectedSeriesIds(new Set())} style={{ fontSize: '0.78rem' }}>İptal</button>
+                            </div>,
+                            document.body
                         )}
                     </>
                 )}
@@ -5855,6 +5974,16 @@ og_image_url: sData.settings.og_image_url || '',
                                         <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginTop: 4 }}>Seri detay sayfasının üst bilgi (Hero) kısmının görünümünü değiştirir.</small>
                                     </div>
                                     <div className="form-group" style={{ margin: 0 }}>
+                                        <label>Seri Detay Arka Plan Blur Yoğunluğu: <strong>{customize.series_detail_bg_blur !== '' ? `${customize.series_detail_bg_blur}px` : 'Varsayılan'}</strong></label>
+                                        <input
+                                            type="range" min="0" max="60" step="5"
+                                            value={customize.series_detail_bg_blur !== '' ? customize.series_detail_bg_blur : 0}
+                                            onChange={e => setCustomize({ ...customize, series_detail_bg_blur: e.target.value })}
+                                            style={{ width: '100%', accentColor: 'var(--accent)' }}
+                                        />
+                                        <small style={{ color: 'var(--text-muted)', fontSize: '0.71rem', display: 'block', marginTop: 4 }}>Seri detay sayfasındaki parallax kapak arka planının blur (bulanıklık) yoğunluğunu ayarlar. Boş bırakılırsa seçili tasarımın varsayılan değeri kullanılır.</small>
+                                    </div>
+                                    <div className="form-group" style={{ margin: 0 }}>
                                         <label>Yorum Bölümü Tasarımı</label>
                                         <select className="form-input" value={customize.comment_design || 'comment_style1'} onChange={e => setCustomize({ ...customize, comment_design: e.target.value })}>
                                             <option value="comment_style1">Klasik (Asura Style)</option>
@@ -6863,8 +6992,8 @@ og_image_url: sData.settings.og_image_url || '',
                         </select>
                     </div>
                     <div className="form-group">
-                        <label>Rating (0-10)</label>
-                        <input type="number" className="form-input" min="0" max="10" step="0.1" value={sRating} onChange={e => setSRating(e.target.value)} />
+                        <label>Rating (0-5)</label>
+                        <input type="number" className="form-input" min="0" max="5" step="0.1" value={sRating} onChange={e => setSRating(e.target.value)} />
                     </div>
                 </div>
                 {/* Adult Content Toggle */}

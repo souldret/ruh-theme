@@ -4,6 +4,26 @@ Tüm önemli değişiklikler bu dosyada belgelenmiştir.
 
 ---
 
+## [v2.5.6] — 2026-08-09 (Altmış Beşinci Yayın)
+
+### 🐛 Hata Düzeltmeleri
+
+- **Link Paylaşımında Eski Logo/Yanlış Görsel**: Seri linki paylaşıldığında Open Graph görseli, kapak resmini kendi sunucusuna self-fetch ile çekmeye çalışıyordu; bu istek başarısız olduğunda sosyal medya botları varsayılan site logosuna düşüyordu. Artık yerel kapak görselleri diskten okunup base64 data URI olarak doğrudan gömülüyor, network'e bağımlılık kaldırıldı.
+- **Profil Avatarı Kırpma Yok Sayılıyordu**: `optimizeAvatar` fonksiyonu kullanıcının önizlemede seçtiği konum/zoom (crop) parametrelerini kabul etmiyordu; her yüklemede her zaman merkezi kare kırpma uygulanıyordu. Fonksiyon artık `optimizeProfileCover` ile aynı mantıkla crop parametrelerini işliyor, kullanıcının seçtiği kırpma birebir uygulanıyor.
+- **Günlük Giriş Ödülü — İngilizce Hata Mesajı**: "Already claimed today! Come back tomorrow (Xh left)." mesajı Türkçeleştirildi: "Günlük ödülünüzü zaten aldınız! Yarın tekrar gelin (X saat kaldı)."
+- **Puanlama Sistemi — 5 Yıldız 10 Puan Veriyordu**: Kullanıcı puanlama sistemi 1-10 ölçeğinde çalışıyordu ama arayüzde 5 yıldız gösteriliyordu; bu nedenle 5 yıldız verildiğinde veritabanına 10 puan yazılıyordu. Sistem tamamen 1-5 ölçeğine geçirildi (veritabanı CHECK kısıtı, rate API, admin panel manuel puan alanı, seri detay yıldız arayüzü). Eski 1-10 ölçekli puanlar otomatik migrasyon ile 1-5 ölçeğine dönüştürüldü.
+- **Manga Okuma Modunda Yorumlar Bölümü Daralıyordu**: `.manga-mode-container`'ın `align-items: center` flex davranışı yüzünden yorumlar bölümü genişlik almıyor, küçülüyordu. `width: 100%` eklenerek düzeltildi.
+- **Seri Detay — Bölüm Görselleri Çok Dardı**: Bölüm listesinde thumbnail özelliği açıldığında görseller 52×72px gibi çok küçük bir alana sıkışıyordu. Alan 88×124px'e büyütüldü (mobilde 64×90px).
+- **Seri Detay — Arka Plan Blur Ayarı Yok Sayılıyordu**: Parallax banner blur yoğunluğu CSS'te sabit (hardcoded) değerlerdeydi, admin panelinde ayarlanabilir değildi. Admin paneline "Arka Plan Blur Yoğunluğu" slider'ı eklendi ve seri detay sayfasında bu ayar CSS'in üzerine yazacak şekilde uygulanıyor.
+
+### ✨ Yeni Özellikler
+
+- **Admin Paneli — Seride Toplu Seçim**: Seri Yönetimi listesine "Tümünü Seç" checkbox'ı ve her seri için tekil checkbox eklendi. Seçili serilerde toplu silme ve toplu kapak görseli atama işlemleri yapılabiliyor.
+- **Bildirimler — Okundu İşaretleme**: Bildirimlere "Sil" butonunun yanına "Okundu Yap" butonu eklendi. Okundu işaretlenen bildirimler silinmez, sadece soluklaşarak listede kalır.
+- **Başkasının Profili — Tam Görünürlük**: Bir kullanıcının profiline gidildiğinde artık kendi profilindeki gibi kütüphane (favoriler + okuma listesi), rozetler ve yorumlar sekmeleri de görüntülenebiliyor.
+
+---
+
 ## [v2.5.5] — 2026-06-14 (Altmış Dördüncü Yayın)
 
 ### 🐛 Hata Düzeltmeleri

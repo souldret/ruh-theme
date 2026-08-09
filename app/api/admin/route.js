@@ -23,6 +23,29 @@ function isSharedChapterImage(imagePath) {
     );
 }
 
+// Bir seriyi ve ona bağlı tüm bölüm/sayfa/yorum/favori kayıtlarını siler
+function deleteSeriesById(db, seriesId) {
+    // Clean up chapter page files (paylaşılan görseller korunur)
+    const chapters = db.prepare('SELECT id FROM chapters WHERE series_id = ?').all(seriesId);
+    for (const ch of chapters) {
+        const pages = db.prepare('SELECT image_path FROM pages WHERE chapter_id = ?').all(ch.id);
+        for (const p of pages) {
+            if (isSharedChapterImage(p.image_path)) continue;
+            const filePath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', p.image_path);
+            try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { }
+        }
+        // Delete translations for pages in this chapter
+        db.prepare('DELETE FROM translations WHERE page_id IN (SELECT id FROM pages WHERE chapter_id = ?)').run(ch.id);
+        db.prepare('DELETE FROM pages WHERE chapter_id = ?').run(ch.id);
+    }
+    // Delete associated comments, chapters, favorites, then the series
+    db.prepare('DELETE FROM comments WHERE series_id = ?').run(seriesId);
+    db.prepare('DELETE FROM comments WHERE chapter_id IN (SELECT id FROM chapters WHERE series_id = ?)').run(seriesId);
+    db.prepare('DELETE FROM favorites WHERE series_id = ?').run(seriesId);
+    db.prepare('DELETE FROM chapters WHERE series_id = ?').run(seriesId);
+    db.prepare('DELETE FROM series WHERE id = ?').run(seriesId);
+}
+
 // Recursively calculate directory size in bytes
 function getDirSize(dirPath) {
     if (!fs.existsSync(dirPath)) return 0;
@@ -73,7 +96,7 @@ export async function POST(request) {
 
         // Check basic permissions based on action category
         let requiredPerm = 'admin';
-        if (['add-series', 'update-series', 'delete-series', 'delete-media'].includes(action)) requiredPerm = 'manage_series';
+        if (['add-series', 'update-series', 'delete-series', 'delete-media', 'bulk-delete-series', 'bulk-update-series-cover'].includes(action)) requiredPerm = 'manage_series';
         else if (['add-chapter', 'update-chapter', 'delete-chapter', 'delete-all-chapters', 'delete-selected-chapters', 'upload-pages', 'delete-page'].includes(action)) requiredPerm = 'upload_chapters';
         else if (['delete-comment', 'delete-all-user-comments'].includes(action)) requiredPerm = 'manage_comments';
         else if (['delete-user', 'change-user-role', 'reset-user-points', 'add-user-points', 'ban_user'].includes(action)) requiredPerm = 'manage_users';
@@ -615,30 +638,56 @@ export async function POST(request) {
         if (action === 'delete-series') {
             const db = getDb();
             const seriesId = formData.get('seriesId');
-            // Clean up chapter page files (paylaşılan görseller korunur)
-            const chapters = db.prepare('SELECT id FROM chapters WHERE series_id = ?').all(seriesId);
-            for (const ch of chapters) {
-                const pages = db.prepare('SELECT image_path FROM pages WHERE chapter_id = ?').all(ch.id);
-                for (const p of pages) {
-                    if (isSharedChapterImage(p.image_path)) continue;
-                    const filePath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', p.image_path);
-                    try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { }
-                }
-                // Delete translations for pages in this chapter
-                db.prepare('DELETE FROM translations WHERE page_id IN (SELECT id FROM pages WHERE chapter_id = ?)').run(ch.id);
-                db.prepare('DELETE FROM pages WHERE chapter_id = ?').run(ch.id);
-            }
-            // Delete associated comments, chapters, favorites, then the series
-            db.prepare('DELETE FROM comments WHERE series_id = ?').run(seriesId);
-            db.prepare('DELETE FROM comments WHERE chapter_id IN (SELECT id FROM chapters WHERE series_id = ?)').run(seriesId);
-            db.prepare('DELETE FROM favorites WHERE series_id = ?').run(seriesId);
-            db.prepare('DELETE FROM chapters WHERE series_id = ?').run(seriesId);
-            db.prepare('DELETE FROM series WHERE id = ?').run(seriesId);
+            deleteSeriesById(db, seriesId);
             // Aktivite logu
             db.prepare('INSERT INTO admin_logs (admin_id, admin_username, action, details) VALUES (?, ?, ?, ?)').run(
                 user.id, user.username, 'delete_series', `Deleted series ID: ${seriesId}`
             );
             return NextResponse.json({ message: 'Series deleted' });
+        }
+
+        if (action === 'bulk-delete-series') {
+            const db = getDb();
+            const seriesIds = JSON.parse(formData.get('seriesIds') || '[]');
+            for (const seriesId of seriesIds) {
+                deleteSeriesById(db, seriesId);
+            }
+            // Aktivite logu
+            db.prepare('INSERT INTO admin_logs (admin_id, admin_username, action, details) VALUES (?, ?, ?, ?)').run(
+                user.id, user.username, 'delete_series', `Bulk deleted ${seriesIds.length} series: ${seriesIds.join(', ')}`
+            );
+            return NextResponse.json({ message: `${seriesIds.length} seri silindi` });
+        }
+
+        if (action === 'bulk-update-series-cover') {
+            const db = getDb();
+            const seriesIds = JSON.parse(formData.get('seriesIds') || '[]');
+            const coverFile = formData.get('cover');
+            if (!coverFile || coverFile.size === 0) return NextResponse.json({ error: 'Kapak görseli seçilmedi' }, { status: 400 });
+
+            const coverDir = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', 'uploads', 'covers');
+            if (!fs.existsSync(coverDir)) fs.mkdirSync(coverDir, { recursive: true });
+            const rawBuffer = Buffer.from(await coverFile.arrayBuffer());
+            let fileName = `cover_${uuidv4()}.webp`;
+            const coverFilePath = path.join(coverDir, fileName);
+            try {
+                await optimizeCoverImage(rawBuffer, coverFilePath);
+            } catch (coverOptErr) {
+                console.error('Cover image optimization failed, saving original:', coverOptErr.message);
+                const ext = path.extname(coverFile.name || '') || '.jpg';
+                fileName = `cover_${uuidv4()}${ext}`;
+                fs.writeFileSync(path.join(coverDir, fileName), rawBuffer);
+            }
+            const coverUrl = `/uploads/covers/${fileName}`;
+
+            const updateStmt = db.prepare('UPDATE series SET cover_url = ? WHERE id = ?');
+            for (const seriesId of seriesIds) {
+                updateStmt.run(coverUrl, seriesId);
+            }
+            db.prepare('INSERT INTO admin_logs (admin_id, admin_username, action, details) VALUES (?, ?, ?, ?)').run(
+                user.id, user.username, 'update_series', `Bulk updated cover for ${seriesIds.length} series: ${seriesIds.join(', ')}`
+            );
+            return NextResponse.json({ message: `${seriesIds.length} serinin kapak görseli güncellendi`, coverUrl });
         }
 
         if (action === 'ban_user') {

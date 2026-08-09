@@ -13,6 +13,22 @@ const CHAPTERS_SCROLL_HEIGHT = 480; // px — scroll modunda kutu yüksekliği (
 
 const STATUS_TR = { 'ongoing': 'Devam Ediyor', 'completed': 'Tamamlandı', 'hiatus': 'Ara Verildi', 'cancelled': 'İptal Edildi', 'current': 'Güncel' };
 
+// Her tasarım için series-detail.css'te tanımlı varsayılan parallax blur (px) ve brightness değerleri
+const DEFAULT_PARALLAX_BLUR = {
+    'detail-style1': 15,
+    'detail-style2': 40,
+    'detail-style3': 0, // brightness only, blur yok
+    'detail-style4': 0, // parallax gizli (siberpunk)
+    'detail-style5': 0, // parallax gizli (minimalist)
+};
+const PARALLAX_BRIGHTNESS = {
+    'detail-style1': 0.4,
+    'detail-style2': 0.6,
+    'detail-style3': 0.4,
+    'detail-style4': 0.4,
+    'detail-style5': 0.4,
+};
+
 const GENRE_TR = {
     'Action': 'Aksiyon', 'Adventure': 'Macera', 'Comedy': 'Komedi', 'Drama': 'Drama',
     'Fantasy': 'Fantastik', 'Historical': 'Tarihi', 'Horror': 'Korku', 'Isekai': 'Isekai',
@@ -138,7 +154,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
     const [coverLightboxOpen, setCoverLightboxOpen] = useState(false);
 
     // User rating state
-    const [userRating, setUserRating] = useState(null); // 1-10
+    const [userRating, setUserRating] = useState(null); // 1-5
     const [hoverRating, setHoverRating] = useState(null);
     const [ratingLoading, setRatingLoading] = useState(false);
     const [ratingVoteCount, setRatingVoteCount] = useState(series.vote_count || 0);
@@ -386,6 +402,9 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
     const lastChapter = sortedChapters[0];
 
     const designClass = appSettings.series_detail_design ? appSettings.series_detail_design.replace('_', '-') : 'detail-style1';
+    const parallaxBlur = (appSettings.series_detail_bg_blur !== undefined && appSettings.series_detail_bg_blur !== '')
+        ? Number(appSettings.series_detail_bg_blur)
+        : (DEFAULT_PARALLAX_BLUR[designClass] ?? 15);
 
     // Adult series — guest visitors: show login wall
     if (isAdult && !user) {
@@ -555,7 +574,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
             <div className="sd-parallax-wrapper">
                 <div 
                     className="sd-parallax-banner" 
-                    style={{ backgroundImage: `url(${series.cover_url || '/demo/cover1.jpg'})` }} 
+                    style={{ backgroundImage: `url(${series.cover_url || '/demo/cover1.jpg'})`, filter: `blur(${parallaxBlur}px) brightness(${PARALLAX_BRIGHTNESS[designClass] ?? 0.4})` }} 
                 />
                 <div className="sd-parallax-overlay" />
             </div>
@@ -777,7 +796,7 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                                 <div className="neo-rating-info">
                                     <div className="neo-stars-display">
                                         {[1,2,3,4,5].map(v => (
-                                            <svg key={v} viewBox="0 0 24 24" fill={v <= Math.round((avgRating || series.rating || 0) / 2) ? "currentColor" : "rgba(255,255,255,0.1)"} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                            <svg key={v} viewBox="0 0 24 24" fill={v <= Math.round(avgRating || series.rating || 0) ? "currentColor" : "rgba(255,255,255,0.1)"} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                                         ))}
                                     </div>
                                     <div className="neo-votes-text">{ratingVoteCount} İnceleme</div>
@@ -809,16 +828,16 @@ export default function SeriesDetailClient({ series, chapters, relatedSeries: in
                             {/* 3. The Interactive Rating Component */}
                             <div className="neo-interactive-rating" onMouseLeave={() => setHoverRating(null)}>
                                 <div className="neo-ir-title">
-                                    {user ? (userRating ? `Senin Puanın: ${userRating}/10` : (appSettings.lang_rate_series || 'Puanla')) : (appSettings.lang_rate_series || 'Giriş Yap')}
+                                    {user ? (userRating ? `Senin Puanın: ${userRating}/5` : (appSettings.lang_rate_series || 'Puanla')) : (appSettings.lang_rate_series || 'Giriş Yap')}
                                 </div>
                                 <div className="neo-ir-stars">
-                                    {[1,2,3,4,5,6,7,8,9,10].map(v => (
+                                    {[1,2,3,4,5].map(v => (
                                         <button
                                             key={v}
                                             className={`neo-ir-star-btn ${(hoverRating || userRating || 0) >= v ? 'active' : ''}`}
                                             onClick={() => submitRating(v)}
                                             onMouseEnter={() => setHoverRating(v)}
-                                            title={`${v}/10`}
+                                            title={`${v}/5`}
                                             disabled={ratingLoading}
                                         >
                                             <svg viewBox="0 0 24 24" fill={(hoverRating || userRating || 0) >= v ? '#f59e0b' : 'rgba(255,255,255,0.2)'} stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>

@@ -8440,12 +8440,18 @@ a.ann-message:hover {
   transform: translateX(3px);
 }
 .sd-chapter-row-thumb {
-  width: 52px;
-  height: 72px;
+  width: 88px;
+  height: 124px;
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
   background: rgba(255,255,255,0.05);
+}
+@media (max-width: 480px) {
+  .sd-chapter-row-thumb {
+    width: 64px;
+    height: 90px;
+  }
 }
 .sd-chapter-row-thumb img {
   width: 100%;

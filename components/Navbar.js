@@ -238,7 +238,7 @@ export default function Navbar({ siteSettings = {} }) {
                                             <div className="notif-empty">Henüz bildiriminiz yok</div>
                                         ) : (
                                             notifications.slice(0, 15).map(n => (
-                                                <div key={n.id} style={{ position: 'relative', display: 'flex' }} className={`notif-item-wrap ${!n.is_read ? 'unread' : ''}`}>
+                                                <div key={n.id} style={{ position: 'relative', display: 'flex', opacity: n.is_read ? 0.55 : 1, background: n.is_read ? 'rgba(0,0,0,0.12)' : 'transparent' }} className={`notif-item-wrap ${!n.is_read ? 'unread' : ''}`}>
                                                     <a href={n.link || '#'} className={`notif-item`} onClick={() => setNotifOpen(false)} style={{ flex: 1 }}>
                                                         <div className="notif-icon">
                                                             {n.type === 'reply' ? (

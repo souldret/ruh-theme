@@ -1,11 +1,27 @@
 import { ImageResponse } from 'next/og';
 import { getDb } from '@/lib/db';
+import fs from 'fs';
+import path from 'path';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yomitranslate.com';
 
 export const runtime = 'nodejs';
 export const contentType = 'image/png';
 export const size = { width: 1200, height: 630 };
+
+// Yerel dosyayı base64 data URI'ye çevirir (self-fetch'e bağımlı olmadan, network hatalarını önler)
+function localFileToDataUri(relPath) {
+    try {
+        const filePath = path.join(process.cwd(), 'public', relPath);
+        if (!fs.existsSync(filePath)) return null;
+        const buffer = fs.readFileSync(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        const mime = ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.gif' ? 'image/gif' : 'image/webp';
+        return `data:${mime};base64,${buffer.toString('base64')}`;
+    } catch {
+        return null;
+    }
+}
 
 export default async function Image({ params }) {
     const { id } = await params;
@@ -29,9 +45,14 @@ export default async function Image({ params }) {
             description = series.description
                 ? series.description.slice(0, 120) + (series.description.length > 120 ? '…' : '')
                 : description;
-            coverUrl = series.cover_url
-                ? (series.cover_url.startsWith('http') ? series.cover_url : `${BASE_URL}${series.cover_url}`)
-                : null;
+            if (series.cover_url) {
+                if (series.cover_url.startsWith('http')) {
+                    coverUrl = series.cover_url;
+                } else {
+                    const rel = series.cover_url.startsWith('/') ? series.cover_url.slice(1) : series.cover_url;
+                    coverUrl = localFileToDataUri(rel);
+                }
+            }
             genres = series.genres
                 ? (() => { try { return JSON.parse(series.genres).slice(0, 3); } catch { return series.genres.split(',').slice(0, 3).map(g => g.trim()); } })()
                 : [];
